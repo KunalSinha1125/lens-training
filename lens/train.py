@@ -71,31 +71,45 @@ def compute_loss(samples, labels, desc, alpha):
     wandb.log({f"kl_penalty_{desc}": kl_penalty})
     return alpha * kl_penalty
 
-def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000):
+def forward(batch, question, descs):
+    inputs = processor(batch['image'], question)
+    samples = lens_model(
+        inputs, 
+        return_tags=("tags" in descs),
+        return_attributes=("attributes" in descs)
+    )
+    return samples
+
+def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=1000, val_size=1000):
     wandb.init(project="lens-training-coco-dataset")
     question = ["What is the image about" for i in range(batch_size)]
-    ds = load_dataset("RIW/small-coco", split="train", streaming=True)
-    dataloader = create_dataloader(ds, batch_size=batch_size)
+    train_ds = load_dataset("RIW/small-coco", split="train", streaming=True)
+    train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
+    val_ds = load_dataset("RIW/small-coco", split="validation", streaming=True)
+    val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
     alphas = [1, 100]
     for epoch in range(num_epochs):
-        for i, batch in enumerate(dataloader):
+        for i, batch in enumerate(train_dataloader):
             if i > (training_size // batch_size):
                 continue
             optimizer.zero_grad()
-            inputs = processor(batch['image'], question)
-            samples = lens_model(
-                inputs, 
-                return_tags=("tags" in descs),
-                return_attributes=("attributes" in descs)
-            )
-            loss = 0
+            samples = forward(batch, question, descs)
+            train_loss = 0
             for j, desc in enumerate(descs):
-                loss += compute_loss(samples, batch['caption'], desc, alphas[j])
-            wandb.log({"loss": loss})
-            loss.backward()
+                train_loss += compute_loss(samples, batch['caption'], desc, alphas[j])
+            wandb.log({"train_loss": train_loss})
+            train_loss.backward()
             optimizer.step()
+        for i, batch in enumerate(val_dataloader):
+            if i > (val_size // batch_size):
+                continue
+            val_loss = 0
+            samples = forward(batch, question, descs)
+            for j, desc in enumerate(descs):
+                val_loss += compute_loss(samples, batch['caption'], desc, alphas[j])
+            wandb.log({"val_loss": val_loss})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
