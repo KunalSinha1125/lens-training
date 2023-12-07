@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset
 import wandb
 import matplotlib.pyplot
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
@@ -70,7 +71,7 @@ def compute_loss(samples, labels, desc, alpha):
     wandb.log({f"kl_penalty_{desc}": kl_penalty})
     return alpha * kl_penalty
 
-def train(descs=["tags", "attributes"], num_epochs=100, lr=1e-5, batch_size=8, training_size=5000):
+def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000):
     wandb.init(project="lens-training-coco-dataset")
     question = ["What is the image about" for i in range(batch_size)]
     ds = load_dataset("RIW/small-coco", split="train", streaming=True)
@@ -97,4 +98,11 @@ def train(descs=["tags", "attributes"], num_epochs=100, lr=1e-5, batch_size=8, t
             optimizer.step()
 
 if __name__ == "__main__":
-    train()
+    parser = ArgumentParser(description='Train',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--descriptions',
+                        nargs='+',
+                        help='Which descriptions to train on')
+    args = parser.parse_args()
+    descs = args.descriptions if args.descriptions else ["tags", "attributes"]
+    train(descs)
