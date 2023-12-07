@@ -118,8 +118,8 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 2,
-        num_attributes: int = 2,
+        num_tags: int = 500,
+        num_attributes: int = 500,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
         max_length: int = 30,
@@ -128,8 +128,8 @@ class Lens(nn.Module):
         num_captions: int = 10,
         return_tags: bool = True,
         return_attributes: bool = True,
-        return_global_caption: bool = True,
-        return_intensive_captions: bool = True,
+        return_global_caption: bool = False,
+        return_intensive_captions: bool = False,
         return_complete_prompt: bool = True,
     ):
 
@@ -163,7 +163,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_tags(
-        self, samples: dict, num_tags: int = 2, contrastive_th: float = 0.2
+        self, samples: dict, num_tags: int = 500, contrastive_th: float = 0.2
     ):
         # Get Image Features
         tags = []
@@ -192,7 +192,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_attributes(
-        self, samples: dict, num_attributes: int = 2, contrastive_th: float = 0.2
+        self, samples: dict, num_attributes: int = 500, contrastive_th: float = 0.2
     ):
         # Get Image Features
         attributes = []
@@ -257,7 +257,7 @@ class Lens(nn.Module):
         max_length: int = 30,
         min_length: int = 10,
         top_k: int = 50,
-        num_captions: int = 10,
+        num_captions: int = 100,
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
@@ -266,16 +266,16 @@ class Lens(nn.Module):
             input_ids=input_ids,
             max_length=max_length,
             min_length=min_length,
-            do_sample=True,
-            top_p=1,
-            top_k=top_k,
-            repetition_penalty=1,
+            #do_sample=True,
+            #top_p=1,
+            #top_k=top_k,
+            #repetition_penalty=1,
+            num_beams=num_captions,
             num_return_sequences=num_captions,
-            output_hidden_states=True,
+            #output_hidden_states=True,
             output_scores=True,
             return_dict_in_generate=True
         )
-        import pdb; pdb.set_trace()
         sequences, scores = captions_output.sequences, captions_output.scores
         captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 

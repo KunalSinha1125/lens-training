@@ -60,35 +60,38 @@ def compute_desc_likelihood(samples, desc):
         return torch.exp(log_likelihood)
     return samples[f"top_scores_{desc}"].squeeze()
 
-def compute_loss(samples, labels):
-    loss = 0
-    for desc in ["intensive_captions"]:#, "tags", "attributes"]:
-        desc_likelihood = compute_desc_likelihood(samples, desc)
-        llm_likelihood = compute_llm_likelihood(samples, labels, desc)
-        kl_penalty = F.kl_div(
-            desc_likelihood.log_softmax(dim=-1), llm_likelihood.log_softmax(dim=-1),
-            reduction="batchmean", log_target=True
-        )
-        loss += kl_penalty
-        wandb.log({f"kl_penalty_{desc}": kl_penalty})
-    #plt.scatter(tags_likelihood, llm_likelihood)
-    return loss
+def compute_loss(samples, labels, desc, alpha):
+    desc_likelihood = compute_desc_likelihood(samples, desc)
+    llm_likelihood = compute_llm_likelihood(samples, labels, desc)
+    kl_penalty = F.kl_div(
+        desc_likelihood.log_softmax(dim=-1), llm_likelihood.log_softmax(dim=-1),
+        reduction="batchmean", log_target=True
+    )
+    wandb.log({f"kl_penalty_{desc}": kl_penalty})
+    return alpha * kl_penalty
 
-def train(num_epochs=100, lr=1e-5, batch_size=2, training_size=2):
+def train(descs=["tags", "attributes"], num_epochs=100, lr=1e-5, batch_size=8, training_size=5000):
     wandb.init(project="lens-training-coco-dataset")
     question = ["What is the image about" for i in range(batch_size)]
     ds = load_dataset("RIW/small-coco", split="train", streaming=True)
     dataloader = create_dataloader(ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
+    alphas = [1, 100]
     for epoch in range(num_epochs):
         for i, batch in enumerate(dataloader):
             if i > (training_size // batch_size):
                 continue
             optimizer.zero_grad()
             inputs = processor(batch['image'], question)
-            samples = lens_model(inputs)
-            loss = compute_loss(samples, batch['caption'])
+            samples = lens_model(
+                inputs, 
+                return_tags=("tags" in descs),
+                return_attributes=("attributes" in descs)
+            )
+            loss = 0
+            for j, desc in enumerate(descs):
+                loss += compute_loss(samples, batch['caption'], desc, alphas[j])
             wandb.log({"loss": loss})
             loss.backward()
             optimizer.step()
