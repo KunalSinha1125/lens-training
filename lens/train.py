@@ -59,7 +59,7 @@ def compute_desc_likelihood(samples, desc):
         logits = logits.reshape((batch_size, num_descs, seq_length))
         log_likelihood = logits.sum(dim=-1)
         return torch.exp(log_likelihood)
-    return samples[f"top_scores_{desc}"].squeeze()
+    return samples[f"top_scores_{desc}"].squeeze().to(device)
 
 def compute_loss(samples, labels, desc, alpha):
     desc_likelihood = compute_desc_likelihood(samples, desc)
