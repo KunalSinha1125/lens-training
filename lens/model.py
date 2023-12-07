@@ -118,8 +118,8 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 500,
-        num_attributes: int = 500,
+        num_tags: int = 1000,
+        num_attributes: int = 1000,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
         max_length: int = 30,
@@ -130,7 +130,7 @@ class Lens(nn.Module):
         return_attributes: bool = True,
         return_global_caption: bool = False,
         return_intensive_captions: bool = False,
-        return_complete_prompt: bool = True,
+        return_complete_prompt: bool = False,
     ):
 
         if return_tags:
@@ -163,7 +163,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_tags(
-        self, samples: dict, num_tags: int = 500, contrastive_th: float = 0.2
+        self, samples: dict, num_tags: int = 1000, contrastive_th: float = 0.2
     ):
         # Get Image Features
         tags = []
@@ -192,7 +192,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_attributes(
-        self, samples: dict, num_attributes: int = 500, contrastive_th: float = 0.2
+        self, samples: dict, num_attributes: int = 1000, contrastive_th: float = 0.2
     ):
         # Get Image Features
         attributes = []
@@ -210,11 +210,12 @@ class Lens(nn.Module):
             k=num_attributes if num_attributes else len(text_scores.squeeze()), dim=-1
         )
         for scores, indexes in zip(top_scores, top_indexes):
-            filter_indexes = indexes[scores >= contrastive_th]
-            if len(filter_indexes) > 0:
-                top_k_tags = [self.vocab_attributes[index] for index in filter_indexes]
-            else:
-                top_k_tags = []
+            #filter_indexes = indexes[scores >= contrastive_th]
+            #if len(filter_indexes) > 0:
+            #    top_k_tags = [self.vocab_attributes[index] for index in filter_indexes]
+            #else:
+            #    top_k_tags = []
+            top_k_tags = [self.vocab_attributes[index] for index in indexes]
             attributes.append(top_k_tags)
         samples[f"attributes"] = attributes
         samples[f"top_scores_attributes"] = top_scores
