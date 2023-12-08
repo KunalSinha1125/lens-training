@@ -158,7 +158,7 @@ class Lens(nn.Module):
             )
 
         if return_complete_prompt:
-            samples = self.create_prompt_from_samples(samples, mode="tags_only")
+            samples = self.create_prompt_from_samples(samples)
 
         return samples
 
