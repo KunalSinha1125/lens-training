@@ -54,26 +54,29 @@ def bert_vqa_baseline(vqa_ex):
 
     print("DATASET LOADED, ABOUT TO ITERATE")
 
-    for i in range(1):
-        curr_ex = vqa_ex[i]
-        #curr_ex = next(iter(ds))
-        img_url = curr_ex['flickr_original_url']
-        raw_image = Image.open(requests.get(img_url, stream=True).raw).convert('RGB')
-        question = curr_ex['question']
+    for i in range(1000):
+        try:
+            curr_ex = vqa_ex[i]
+            #curr_ex = next(iter(ds))
+            img_url = curr_ex['flickr_original_url']
+            raw_image = Image.open(requests.get(img_url, stream=True).raw).convert('RGB')
+            question = curr_ex['question']
 
-        print({i})
+            print({i})
 
-        samples = processor([raw_image],[question])
-        output = lens_model(samples)
-        print(output["prompts"])
-        input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
-        outputs = llm_model.generate(input_ids)
-        llm_answer = tokenizer.decode(outputs[0])
-        print(llm_answer)
-        output_captions.append(llm_answer)
-        
-        true_answers.append(curr_ex['answers'][0])
-        print(i, output_captions[i], true_answers[i])
+            samples = processor([raw_image],[question])
+            output = lens_model(samples)
+            print(output["prompts"])
+            input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
+            outputs = llm_model.generate(input_ids)
+            llm_answer = tokenizer.decode(outputs[0])
+            print(llm_answer)
+            output_captions.append(llm_answer)
+            
+            true_answers.append(curr_ex['answers'][0])
+            print(i, output_captions[i], true_answers[i])
+        except:
+            print("Error, skipped example")
 
     print(len(output_captions), len(true_answers))
     scores = bertscore.compute(predictions=output_captions, references=true_answers, lang="en")
