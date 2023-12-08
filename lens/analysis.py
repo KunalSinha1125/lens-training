@@ -105,32 +105,32 @@ def get_1k_examples(ds):
     return examples
 
 def main(descs=["tags", "attributes"]):
-    # coco_ds = load_dataset("RIW/small-coco", split="validation", streaming=True)
-    # coco_ex = get_1k_examples(coco_ds)
+    coco_ds = load_dataset("RIW/small-coco", split="validation", streaming=True)
+    coco_ex = get_1k_examples(coco_ds)
 
-    vqa_ds = load_dataset("textvqa", split="validation", streaming=True)
-    vqa_ex = get_1k_examples(vqa_ds)
+    # vqa_ds = load_dataset("textvqa", split="validation", streaming=True)
+    # vqa_ex = get_1k_examples(vqa_ds)
     
-    print("VQA LOADED")
+    # print("VQA LOADED")
 
 
     bert_baseline = {}
-    # bert_baseline['coco_baseline'] = bert_coco_baseline(coco_ex, descs)
-    # print(f"{bert_baseline['coco_baseline']=}")
-    bert_baseline['vqa_baseline'] = bert_vqa_baseline(vqa_ex, descs)
-    print(f"{bert_baseline['vqa_baseline']=}")
+    bert_baseline['coco_baseline'] = bert_coco_baseline(coco_ex, descs)
+    print(f"{bert_baseline['coco_baseline']=}")
+    # bert_baseline['vqa_baseline'] = bert_vqa_baseline(vqa_ex, descs)
+    # print(f"{bert_baseline['vqa_baseline']=}")
 
     # bert_trained = {}
     # bert_trained['coco_baseline'] = bert_coco_trained(coco_ex)
     # bert_trained['vqa_baseline'] = bert_vqa_trained(vqa_ex)
 
-    # average_precision = sum(bert_baseline['coco_baseline']['precision']) / len(bert_baseline['coco_baseline']['precision'])
-    # average_recall = sum(bert_baseline['coco_baseline']['recall']) / len(bert_baseline['coco_baseline']['recall'])
-    # average_f1 = sum(bert_baseline['coco_baseline']['f1']) / len(bert_baseline['coco_baseline']['f1'])
+    average_precision = sum(bert_baseline['coco_baseline']['precision']) / len(bert_baseline['coco_baseline']['precision'])
+    average_recall = sum(bert_baseline['coco_baseline']['recall']) / len(bert_baseline['coco_baseline']['recall'])
+    average_f1 = sum(bert_baseline['coco_baseline']['f1']) / len(bert_baseline['coco_baseline']['f1'])
 
-    average_precision = sum(bert_baseline['vqa_baseline']['precision']) / len(bert_baseline['vqa_baseline']['precision'])
-    average_recall = sum(bert_baseline['vqa_baseline']['recall']) / len(bert_baseline['vqa_baseline']['recall'])
-    average_f1 = sum(bert_baseline['vqa_baseline']['f1']) / len(bert_baseline['vqa_baseline']['f1'])
+    # average_precision = sum(bert_baseline['vqa_baseline']['precision']) / len(bert_baseline['vqa_baseline']['precision'])
+    # average_recall = sum(bert_baseline['vqa_baseline']['recall']) / len(bert_baseline['vqa_baseline']['recall'])
+    # average_f1 = sum(bert_baseline['vqa_baseline']['f1']) / len(bert_baseline['vqa_baseline']['f1'])
 
     print(f"Average Precision: {average_precision}")
     print(f"Average Recall: {average_recall}")
@@ -138,10 +138,10 @@ def main(descs=["tags", "attributes"]):
 
     # Qualitative Analysis: top-k and bottom-k F1 scores
     k = 20
-    sorted_indices = sorted(range(len(bert_baseline['vqa_baseline']['f1'])), key=lambda i: bert_baseline['vqa_baseline']['f1'][i], reverse=True)
+    sorted_indices = sorted(range(len(bert_baseline['coco_baseline']['f1'])), key=lambda i: bert_baseline['coco_baseline']['f1'][i], reverse=True)
     top_k_indices = sorted_indices[:k]
     bottom_k_indices = sorted_indices[-k:]
-    bottom_k_indices = sorted(bottom_k_indices, key=lambda i: bert_baseline['vqa_baseline']['f1'][i])
+    bottom_k_indices = sorted(bottom_k_indices, key=lambda i: bert_baseline['coco_baseline']['f1'][i])
 
     print(f"Top {k} F1 Score Examples: {top_k_indices}")
     print(f"Bottom {k} F1 Score Examples: {bottom_k_indices}")
