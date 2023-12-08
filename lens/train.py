@@ -68,7 +68,6 @@ def compute_loss(samples, labels, desc, alpha):
         desc_likelihood.log_softmax(dim=-1), llm_likelihood.log_softmax(dim=-1),
         reduction="batchmean", log_target=True
     )
-    wandb.log({f"kl_penalty_{desc}": kl_penalty})
     return alpha * kl_penalty
 
 def forward(batch, question, descs):
@@ -80,7 +79,7 @@ def forward(batch, question, descs):
     )
     return samples
 
-def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=1000, val_size=1000):
+def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_size=1000):
     wandb.init(project="lens-training-coco-dataset")
     question = ["What is the image about" for i in range(batch_size)]
     train_ds = load_dataset("RIW/small-coco", split="train", streaming=True)
@@ -91,6 +90,7 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=1000, val_
     torch.autograd.set_detect_anomaly(True)
     alphas = [1, 100]
     for epoch in range(num_epochs):
+        train_loss_epoch, val_loss_epoch = 0, 0
         for i, batch in enumerate(train_dataloader):
             if i > (training_size // batch_size):
                 continue
@@ -98,7 +98,10 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=1000, val_
             samples = forward(batch, question, descs)
             train_loss = 0
             for j, desc in enumerate(descs):
-                train_loss += compute_loss(samples, batch['caption'], desc, alphas[j])
+                curr_train_loss = compute_loss(samples, batch['caption'], desc, alphas[j])
+                wandb.log({f"train_kl_penalty_{desc}": curr_train_loss})
+                train_loss += curr_train_loss
+            train_loss_epoch += train_loss
             wandb.log({"train_loss": train_loss})
             train_loss.backward()
             optimizer.step()
@@ -108,8 +111,13 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=1000, val_
             val_loss = 0
             samples = forward(batch, question, descs)
             for j, desc in enumerate(descs):
-                val_loss += compute_loss(samples, batch['caption'], desc, alphas[j])
+                curr_val_loss = compute_loss(samples, batch['caption'], desc, alphas[j])
+                wandb.log({f"val_kl_penalty_{desc}": curr_val_loss})
+                val_loss += curr_val_loss
+            val_loss_epoch += val_loss
             wandb.log({"val_loss": val_loss})
+        wandb.log({"train_loss_epoch": train_loss_epoch})
+        wandb.log({"val_loss_epoch": val_loss_epoch})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',

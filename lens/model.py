@@ -118,8 +118,8 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 1000,
-        num_attributes: int = 1000,
+        num_tags: int = 500,
+        num_attributes: int = 250,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
         max_length: int = 30,
@@ -163,7 +163,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_tags(
-        self, samples: dict, num_tags: int = 1000, contrastive_th: float = 0.2
+        self, samples: dict, num_tags: int = 500, contrastive_th: float = 0.2
     ):
         # Get Image Features
         tags = []
@@ -192,7 +192,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_attributes(
-        self, samples: dict, num_attributes: int = 1000, contrastive_th: float = 0.2
+        self, samples: dict, num_attributes: int = 250, contrastive_th: float = 0.2
     ):
         # Get Image Features
         attributes = []
