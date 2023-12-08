@@ -75,13 +75,14 @@ def forward(batch, question, descs):
     samples = lens_model(
         inputs, 
         return_tags=("tags" in descs),
-        return_attributes=("attributes" in descs)
+        return_attributes=("attributes" in descs),
         return_complete_prompt=False
     )
     return samples
 
-def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_size=1000):
+def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=5000, val_size=1000, early=5):
     wandb.init(project="lens-training-coco-dataset")
+    save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
     train_ds = load_dataset("RIW/small-coco", split="train", streaming=True)
     train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
@@ -94,30 +95,37 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_
         "attributes": 100
     }
     for epoch in range(num_epochs):
-        train_loss_epoch, val_loss_epoch = 0, 0
+        train_loss_epoch = 0
+        best_train_loss, best_i = float('inf'), 0
         for i, batch in enumerate(train_dataloader):
-            if i > (training_size // batch_size):
+            if i > (training_size // batch_size) or (best_i - i) >= early:
                 continue
             optimizer.zero_grad()
             samples = forward(batch, question, descs)
             train_loss = 0
             for j, desc in enumerate(descs):
-                curr_train_loss = compute_loss(samples, batch['caption'], desc, alphas[desc])
-                wandb.log({f"train_kl_penalty_{desc}": curr_train_loss})
-                train_loss += curr_train_loss
+                kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
+                wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
+                train_loss += kl_penalty
+            if train_loss < best_train_loss:
+                best_train_loss = train_loss
+                best_i = i
             train_loss_epoch += train_loss
             wandb.log({"train_loss": train_loss})
             train_loss.backward()
             optimizer.step()
+            torch.save(lens_model.state_dict(), save_path)
+
+        val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
             if i > (val_size // batch_size):
                 continue
             val_loss = 0
             samples = forward(batch, question, descs)
             for j, desc in enumerate(descs):
-                curr_val_loss = compute_loss(samples, batch['caption'], desc, alphas[desc])
-                wandb.log({f"val_kl_penalty_{desc}": curr_val_loss})
-                val_loss += curr_val_loss
+                kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
+                wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
+                val_loss += kl_penalty
             val_loss_epoch += val_loss
             wandb.log({"val_loss": val_loss})
         wandb.log({"train_loss_epoch": train_loss_epoch})
