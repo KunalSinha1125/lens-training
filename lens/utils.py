@@ -171,13 +171,9 @@ def create_prompt_sample(
         prompt += "\n-".join(samples[tags_col][idx])
         prompt += "\nAttributes:\n-"
         prompt += "\n-".join(samples[attributes_col][idx])
-        prompt += "\nCaptions:\n-"
-        prompt += "\n-".join(
-            samples[intensive_captions_col][idx][:num_intensive_captions]
-        )
         prompt += "\nQuestion:"
         prompt += question
         prompt += "\nShort Answer:"
     else:
-        raise Excepton("Mode not available")
+        raise Exception("Mode not available")
     return prompt
