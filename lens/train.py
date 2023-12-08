@@ -76,6 +76,7 @@ def forward(batch, question, descs):
         inputs, 
         return_tags=("tags" in descs),
         return_attributes=("attributes" in descs)
+        return_complete_prompt=False
     )
     return samples
 
@@ -88,7 +89,10 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
-    alphas = [1, 100]
+    alphas = {
+        "tags": 1,
+        "attributes": 100
+    }
     for epoch in range(num_epochs):
         train_loss_epoch, val_loss_epoch = 0, 0
         for i, batch in enumerate(train_dataloader):
@@ -98,7 +102,7 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_
             samples = forward(batch, question, descs)
             train_loss = 0
             for j, desc in enumerate(descs):
-                curr_train_loss = compute_loss(samples, batch['caption'], desc, alphas[j])
+                curr_train_loss = compute_loss(samples, batch['caption'], desc, alphas[desc])
                 wandb.log({f"train_kl_penalty_{desc}": curr_train_loss})
                 train_loss += curr_train_loss
             train_loss_epoch += train_loss
@@ -111,7 +115,7 @@ def train(descs, num_epochs=100, lr=1e-5, batch_size=8, training_size=5000, val_
             val_loss = 0
             samples = forward(batch, question, descs)
             for j, desc in enumerate(descs):
-                curr_val_loss = compute_loss(samples, batch['caption'], desc, alphas[j])
+                curr_val_loss = compute_loss(samples, batch['caption'], desc, alphas[desc])
                 wandb.log({f"val_kl_penalty_{desc}": curr_val_loss})
                 val_loss += curr_val_loss
             val_loss_epoch += val_loss

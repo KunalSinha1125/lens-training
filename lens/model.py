@@ -130,7 +130,7 @@ class Lens(nn.Module):
         return_attributes: bool = True,
         return_global_caption: bool = False,
         return_intensive_captions: bool = False,
-        return_complete_prompt: bool = False,
+        return_complete_prompt: bool = True,
     ):
 
         if return_tags:
