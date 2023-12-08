@@ -80,7 +80,7 @@ def forward(batch, question, descs):
     )
     return samples
 
-def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=3000, val_size=1000, early=5):
+def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=3000, val_size=500, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
