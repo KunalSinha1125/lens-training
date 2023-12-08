@@ -151,6 +151,8 @@ if __name__ == "__main__":
                         help='Which descriptions to train on')
     args = parser.parse_args()
     descs = args.descriptions if args.descriptions else ["tags", "attributes"]
+    model_path = "trained_model_" + "_".join(descs) + ".pt"
+    lens_model.load_state_dict(torch.load(model_path))
     main(descs)
 
     
