@@ -8,6 +8,7 @@ from datasets import Dataset, load_dataset
 import wandb
 import re
 from evaluate import load
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 bertscore = load("bertscore")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -16,7 +17,7 @@ processor = LensProcessor()
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
 llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
 
-def bert_coco_baseline(coco_ex):
+def bert_coco_baseline(coco_ex, descs=["tags", "attributes"]):
     #ds = load_dataset("RIW/small-coco", split="validation")
     wandb.init(project="lens-training-coco-dataset")
     true_captions = []
@@ -30,7 +31,11 @@ def bert_coco_baseline(coco_ex):
         question = "What is the image about?"
 
         samples = processor([raw_image],[question])
-        output = lens_model(samples)
+        output = lens_model(
+            samples,
+            return_tags=("tags" in descs),
+            return_attributes=("attributes" in descs),
+        )
         print(output["prompts"])
         input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
         outputs = llm_model.generate(input_ids)
@@ -46,7 +51,7 @@ def bert_coco_baseline(coco_ex):
     print(scores)
     return scores
 
-def bert_vqa_baseline(vqa_ex):
+def bert_vqa_baseline(vqa_ex, descs=["tags", "attributes"]):
     #ds = load_dataset("RIW/small-coco", split="validation")
     wandb.init(project="lens-training-coco-dataset")
     true_answers = []
@@ -65,7 +70,11 @@ def bert_vqa_baseline(vqa_ex):
             print({i})
 
             samples = processor([raw_image],[question])
-            output = lens_model(samples)
+            output = lens_model(
+                samples,
+                return_tags=("tags" in descs),
+                return_attributes=("attributes" in descs),
+            )
             print(output["prompts"])
             input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
             outputs = llm_model.generate(input_ids)
@@ -91,7 +100,7 @@ def get_1k_examples(ds):
             break
     return examples
 
-def main():
+def main(descs=["tags", "attributes"]):
     # coco_ds = load_dataset("RIW/small-coco", split="validation", streaming=True)
     # coco_ex = get_1k_examples(coco_ds)
 
@@ -102,9 +111,9 @@ def main():
 
 
     bert_baseline = {}
-    # bert_baseline['coco_baseline'] = bert_coco_baseline(coco_ex)
+    # bert_baseline['coco_baseline'] = bert_coco_baseline(coco_ex, descs)
     # print(f"{bert_baseline['coco_baseline']=}")
-    bert_baseline['vqa_baseline'] = bert_vqa_baseline(vqa_ex)
+    bert_baseline['vqa_baseline'] = bert_vqa_baseline(vqa_ex, descs)
     print(f"{bert_baseline['vqa_baseline']=}")
 
     # bert_trained = {}
@@ -135,6 +144,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser(description='Train',
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--descriptions',
+                        nargs='+',
+                        help='Which descriptions to train on')
+    args = parser.parse_args()
+    descs = args.descriptions if args.descriptions else ["tags", "attributes"]
+    main(descs)
 
     
