@@ -130,7 +130,7 @@ class Lens(nn.Module):
         return_attributes: bool = True,
         return_global_caption: bool = False,
         return_intensive_captions: bool = False,
-        return_complete_prompt: bool = True,
+        return_prompt: bool = True,
     ):
 
         if return_tags:
@@ -157,8 +157,13 @@ class Lens(nn.Module):
                 num_captions=num_captions,
             )
 
-        if return_complete_prompt:
-            samples = self.create_prompt_from_samples(samples)
+        if return_prompt:
+            mode = "all"
+            if return_tags and not return_attributes:
+                mode = "tags_only"
+            elif return_attributes and not return_tags:
+                mode = "attributes_only"
+            samples = self.create_prompt_from_samples(samples, mode=mode)
 
         return samples
 

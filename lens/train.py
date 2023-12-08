@@ -76,7 +76,7 @@ def forward(batch, question, descs):
         inputs, 
         return_tags=("tags" in descs),
         return_attributes=("attributes" in descs),
-        return_complete_prompt=False
+        return_prompt=False
     )
     return samples
 

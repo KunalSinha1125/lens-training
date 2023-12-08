@@ -141,6 +141,13 @@ def create_prompt_sample(
         prompt += question
         prompt += "\nShort Answer:"
 
+    elif mode == "attributes_only":
+        prompt += "Attribute: "
+        prompt += ",".join(samples[attributes_col][idx])
+        prompt += "\nQuestion:"
+        prompt += question
+        prompt += "\nShort Answer:"
+
     elif mode == "attributes_only_single":
         prompt += "Attribute: "
         prompt += samples[attributes_col][idx][desc_idx]
