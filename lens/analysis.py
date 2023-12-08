@@ -23,7 +23,7 @@ def bert_coco_baseline(coco_ex, descs=["tags", "attributes"]):
     true_captions = []
     output_captions = []
 
-    for i in range(1000):
+    for i in range(500):
         curr_ex = coco_ex[i]
         #curr_ex = next(iter(ds))
         img_url = curr_ex['url']
@@ -61,7 +61,7 @@ def bert_vqa_baseline(vqa_ex, descs=["tags", "attributes"]):
 
     print("DATASET LOADED, ABOUT TO ITERATE")
 
-    for i in range(1000):
+    for i in range(500):
         try:
             curr_ex = vqa_ex[i]
             #curr_ex = next(iter(ds))
