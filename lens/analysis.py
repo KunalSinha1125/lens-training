@@ -33,7 +33,9 @@ def bert_coco_baseline(coco_ex, descs=["tags", "attributes"]):
         samples = processor([raw_image],[question])
         output = lens_model(
             samples,
+            num_tags=10,
             return_tags=("tags" in descs),
+            num_attributes=10,
             return_attributes=("attributes" in descs),
         )
         print(output["prompts"])
@@ -72,7 +74,9 @@ def bert_vqa_baseline(vqa_ex, descs=["tags", "attributes"]):
             samples = processor([raw_image],[question])
             output = lens_model(
                 samples,
+                num_tags=10,
                 return_tags=("tags" in descs),
+                num_attributes=10,
                 return_attributes=("attributes" in descs),
             )
             print(output["prompts"])
