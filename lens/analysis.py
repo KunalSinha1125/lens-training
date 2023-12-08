@@ -62,31 +62,34 @@ def bert_vqa_baseline(vqa_ex, descs=["tags", "attributes"]):
     print("DATASET LOADED, ABOUT TO ITERATE")
 
     for i in range(500):
-        curr_ex = vqa_ex[i]
-        #curr_ex = next(iter(ds))
-        img_url = curr_ex['flickr_original_url']
-        raw_image = Image.open(requests.get(img_url, stream=True).raw).convert('RGB')
-        question = curr_ex['question']
+        try:
+            curr_ex = vqa_ex[i]
+            #curr_ex = next(iter(ds))
+            img_url = curr_ex['flickr_original_url']
+            raw_image = Image.open(requests.get(img_url, stream=True).raw).convert('RGB')
+            question = curr_ex['question']
 
-        print({i})
+            print({i})
 
-        samples = processor([raw_image],[question])
-        output = lens_model(
-            samples,
-            num_tags=10,
-            return_tags=("tags" in descs),
-            num_attributes=10,
-            return_attributes=("attributes" in descs),
-        )
-        print(output["prompts"])
-        input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
-        outputs = llm_model.generate(input_ids)
-        llm_answer = tokenizer.decode(outputs[0])
-        print(llm_answer)
-        output_captions.append(llm_answer)
-        
-        true_answers.append(curr_ex['answers'][0])
-        print(i, output_captions[i], true_answers[i])
+            samples = processor([raw_image],[question])
+            output = lens_model(
+                samples,
+                num_tags=10,
+                return_tags=("tags" in descs),
+                num_attributes=10,
+                return_attributes=("attributes" in descs),
+            )
+            print(output["prompts"])
+            input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
+            outputs = llm_model.generate(input_ids)
+            llm_answer = tokenizer.decode(outputs[0])
+            print(llm_answer)
+            output_captions.append(llm_answer)
+            
+            true_answers.append(curr_ex['answers'][0])
+            print(i, output_captions[i], true_answers[i])
+        except:
+            print("Error, skipped example")
 
     print(len(output_captions), len(true_answers))
     scores = bertscore.compute(predictions=output_captions, references=true_answers, lang="en")
