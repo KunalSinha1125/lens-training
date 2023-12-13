@@ -76,9 +76,17 @@ def forward(batch, question, descs):
         inputs, 
         return_tags=("tags" in descs),
         return_attributes=("attributes" in descs),
-        return_prompt=False
+        return_prompt=True
     )
     return samples
+
+def compute_accuracy(batch, samples):
+    input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
+    outputs = llm_model.generate(input_ids)
+    predictions = tokenizer.decode(outputs[0])
+    answers = batch["captions"]
+    num_correct = torch.eq(predictions, answers).sum()
+    return num_correct
 
 def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=8, early=5):
     wandb.init(project="lens-training-coco-dataset")
@@ -115,6 +123,15 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
+
+        train_acc_epoch = 0
+        for i, batch in enumerate(train_dataloader):
+            if i > (training_size // batch_size):
+                continue
+            samples = forward(batch, question, descs)
+            num_correct = compute_accuracy(batch, samples)
+            train_acc_epoch += num_correct
+            wandb.log({"train_acc": num_correct / len(samples["prompts"])})
 
         val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
