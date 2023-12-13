@@ -88,7 +88,7 @@ def compute_accuracy(batch, samples):
     num_correct = torch.eq(predictions, answers).sum()
     return num_correct
 
-def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=8, early=5):
+def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
@@ -103,10 +103,11 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=
         "attributes": 100
     }
     for epoch in range(num_epochs):
+        #Compute train loss
         train_loss_epoch = 0
         best_train_loss, best_i = float('inf'), 0
         for i, batch in enumerate(train_dataloader):
-            if i > (training_size // batch_size) or (best_i - i) >= early:
+            if i > (train_size // batch_size) or (best_i - i) >= early:
                 continue
             optimizer.zero_grad()
             samples = forward(batch, question, descs)
@@ -123,16 +124,21 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
+        wandb.log({"train_loss_epoch": train_loss_epoch})
 
-        train_acc_epoch = 0
+        # Compute train accuracy
+        total, total_correct = 0, 0
         for i, batch in enumerate(train_dataloader):
-            if i > (training_size // batch_size):
+            if i > (train_size // batch_size):
                 continue
             samples = forward(batch, question, descs)
             num_correct = compute_accuracy(batch, samples)
-            train_acc_epoch += num_correct
+            total_correct += num_correct
+            total += len(samples["prompts"])
             wandb.log({"train_acc": num_correct / len(samples["prompts"])})
+        wandb.log({"train_acc_epoch": total_correct / total})
 
+        #Compute val loss
         val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
             if i > (val_size // batch_size):
@@ -145,8 +151,19 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, training_size=8, val_size=
                 val_loss += kl_penalty
             val_loss_epoch += val_loss
             wandb.log({"val_loss": val_loss})
-        wandb.log({"train_loss_epoch": train_loss_epoch})
         wandb.log({"val_loss_epoch": val_loss_epoch})
+
+        #Compute val accuracy
+        total, total_correct = 0, 0
+        for i, batch in enumerate(val_dataloader):
+            if i > (val_size // batch_size):
+                continue
+            samples = forward(batch, question, descs)
+            num_correct = compute_accuracy(batch, samples)
+            total_correct += num_correct
+            total += len(samples["prompts"])
+            wandb.log({"val_acc": num_correct / len(samples["prompts"])})
+        wandb.log({"val_acc_epoch": total_correct / total})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
