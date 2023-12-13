@@ -127,16 +127,16 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, 
         wandb.log({"train_loss_epoch": train_loss_epoch})
 
         # Compute train accuracy
-        total, total_correct = 0, 0
-        for i, batch in enumerate(train_dataloader):
-            if i > (train_size // batch_size):
-                continue
-            samples = forward(batch, question, descs)
-            num_correct = compute_accuracy(batch, samples)
-            total_correct += num_correct
-            total += len(samples["prompts"])
-            wandb.log({"train_acc": num_correct / len(samples["prompts"])})
-        wandb.log({"train_acc_epoch": total_correct / total})
+        # total, total_correct = 0, 0
+        # for i, batch in enumerate(train_dataloader):
+        #     if i > (train_size // batch_size):
+        #         continue
+        #     samples = forward(batch, question, descs)
+        #     num_correct = compute_accuracy(batch, samples)
+        #     total_correct += num_correct
+        #     total += len(samples["prompts"])
+        #     wandb.log({"train_acc": num_correct / len(samples["prompts"])})
+        # wandb.log({"train_acc_epoch": total_correct / total})
 
         #Compute val loss
         val_loss_epoch = 0
@@ -154,16 +154,16 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, 
         wandb.log({"val_loss_epoch": val_loss_epoch})
 
         #Compute val accuracy
-        total, total_correct = 0, 0
-        for i, batch in enumerate(val_dataloader):
-            if i > (val_size // batch_size):
-                continue
-            samples = forward(batch, question, descs)
-            num_correct = compute_accuracy(batch, samples)
-            total_correct += num_correct
-            total += len(samples["prompts"])
-            wandb.log({"val_acc": num_correct / len(samples["prompts"])})
-        wandb.log({"val_acc_epoch": total_correct / total})
+        # total, total_correct = 0, 0
+        # for i, batch in enumerate(val_dataloader):
+        #     if i > (val_size // batch_size):
+        #         continue
+        #     samples = forward(batch, question, descs)
+        #     num_correct = compute_accuracy(batch, samples)
+        #     total_correct += num_correct
+        #     total += len(samples["prompts"])
+        #     wandb.log({"val_acc": num_correct / len(samples["prompts"])})
+        # wandb.log({"val_acc_epoch": total_correct / total})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
