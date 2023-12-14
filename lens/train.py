@@ -12,6 +12,9 @@ from datasets import Dataset, load_dataset
 import wandb
 import matplotlib.pyplot
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+import pandas as pd
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
@@ -80,15 +83,18 @@ def forward(batch, question, descs):
     )
     return samples
 
-def compute_accuracy(batch, samples):
+def compute_accuracy(batch, samples, ):
     input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
     outputs = llm_model.generate(input_ids)
-    predictions = tokenizer.decode(outputs[0])
-    answers = batch["captions"]
-    num_correct = torch.eq(predictions, answers).sum()
-    return num_correct
+    predictions = np.array([
+        pred.replace("</pad>", "").replace("</s", "").strip()
+        for pred in tokenizer.batch_decode(outputs)
+    ])
+    answers = np.array(batch["captions"])
+    acc = (predictions == answers).mean()
+    return acc
 
-def train(descs, num_epochs=50000, lr=1e-4, batch_size=8, train_size=1, val_size=1, early=5):
+def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
@@ -102,9 +108,9 @@ def train(descs, num_epochs=50000, lr=1e-4, batch_size=8, train_size=1, val_size
         "tags": 1,
         "attributes": 100
     }
+    
     for epoch in range(num_epochs):
         #Compute train loss
-        train_loss_epoch = 0
         best_train_loss, best_i = float('inf'), 0
         for i, batch in enumerate(train_dataloader):
             if i > (train_size // batch_size) or (best_i - i) >= early:
@@ -112,34 +118,27 @@ def train(descs, num_epochs=50000, lr=1e-4, batch_size=8, train_size=1, val_size
             optimizer.zero_grad()
             samples = forward(batch, question, descs)
             train_loss = 0
-            for j, desc in enumerate(descs):
+            for desc in descs:
                 kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
                 wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
             if train_loss < best_train_loss:
                 best_train_loss = train_loss
                 best_i = i
-            train_loss_epoch += train_loss
             wandb.log({"train_loss": train_loss})
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
-        wandb.log({"train_loss_epoch": train_loss_epoch})
 
         # Compute train accuracy
-        # total, total_correct = 0, 0
-        # for i, batch in enumerate(train_dataloader):
-        #     if i > (train_size // batch_size):
-        #         continue
-        #     samples = forward(batch, question, descs)
-        #     num_correct = compute_accuracy(batch, samples)
-        #     total_correct += num_correct
-        #     total += len(samples["prompts"])
-        #     wandb.log({"train_acc": num_correct / len(samples["prompts"])})
-        # wandb.log({"train_acc_epoch": total_correct / total})
+        for i, batch in enumerate(train_dataloader):
+            if i > (train_size // batch_size):
+                continue
+            samples = forward(batch, question, descs)
+            train_acc = compute_accuracy(batch, samples)
+            wandb.log({"train_acc": train_acc})
 
         #Compute val loss
-        val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
             if i > (val_size // batch_size):
                 continue
@@ -149,21 +148,15 @@ def train(descs, num_epochs=50000, lr=1e-4, batch_size=8, train_size=1, val_size
                 kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
                 wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
-            val_loss_epoch += val_loss
             wandb.log({"val_loss": val_loss})
-        wandb.log({"val_loss_epoch": val_loss_epoch})
 
-        #Compute val accuracy
-        # total, total_correct = 0, 0
-        # for i, batch in enumerate(val_dataloader):
-        #     if i > (val_size // batch_size):
-        #         continue
-        #     samples = forward(batch, question, descs)
-        #     num_correct = compute_accuracy(batch, samples)
-        #     total_correct += num_correct
-        #     total += len(samples["prompts"])
-        #     wandb.log({"val_acc": num_correct / len(samples["prompts"])})
-        # wandb.log({"val_acc_epoch": total_correct / total})
+        # Compute val accuracy
+        for i, batch in enumerate(val_dataloader):
+            if i > (val_size // batch_size):
+                continue
+            samples = forward(batch, question, descs)
+            val_acc = compute_accuracy(batch, samples)
+            wandb.log({"val_acc": val_acc})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
