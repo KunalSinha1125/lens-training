@@ -67,6 +67,11 @@ def compute_desc_likelihood(samples, desc):
 def compute_loss(samples, labels, desc, alpha):
     desc_likelihood = compute_desc_likelihood(samples, desc)
     llm_likelihood = compute_llm_likelihood(samples, labels, desc)
+    table = wandb.table(df=pd.DataFrame({
+        "desc": desc_likelihood,
+        "llm": llm_likelihood
+    }))
+    wandb.log({"Likelihoods": table})
     kl_penalty = F.kl_div(
         desc_likelihood.log_softmax(dim=-1), llm_likelihood.log_softmax(dim=-1),
         reduction="batchmean", log_target=True
@@ -108,7 +113,7 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, 
         "tags": 1,
         "attributes": 100
     }
-    
+
     for epoch in range(num_epochs):
         #Compute train loss
         best_train_loss, best_i = float('inf'), 0
