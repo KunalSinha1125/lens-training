@@ -88,7 +88,7 @@ def compute_accuracy(batch, samples):
     num_correct = torch.eq(predictions, answers).sum()
     return num_correct
 
-def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
+def train(descs, num_epochs=50000, lr=1e-4, batch_size=8, train_size=1, val_size=1, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
