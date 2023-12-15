@@ -12,8 +12,6 @@ from datasets import Dataset, load_dataset
 import wandb
 import matplotlib.pyplot
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
 import pandas as pd
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -21,13 +19,6 @@ lens_model = Lens()
 processor = LensProcessor()
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
 llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
-
-def logits_to_probabilities(logits, token_ids):
-    batch_size, num_sequences, seq_length, vocab_size = logits.shape
-    logprobs = logits.log_softmax(dim=-1)
-    masked_logprobs = logprobs.gather(dim=-1, index=token_ids.unsqueeze(-1))
-    log_likelihood = masked_logprobs.squeeze().sum(dim=-1)
-    return torch.exp(log_likelihood)
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
@@ -48,35 +39,43 @@ def compute_llm_likelihood(samples, labels, desc):
         attention_mask=prompt_encodings["attention_mask"],
         labels=label_encodings["input_ids"]
     )
-    #Compute likelihood based on logits
+    #Compute logprobs based on logits
     _, seq_length, vocab_size = outputs.logits.shape
     logits = outputs.logits.reshape((batch_size, num_descs, seq_length, vocab_size))
-    token_ids = label_encodings["input_ids"].reshape((batch_size, num_descs, seq_length))
-    return logits_to_probabilities(logits, token_ids).to(device)
+    logprobs = logits.log_softmax(dim=-1)
+    #Return perplexity rather than likelihood to avoid underflow
+    token_ids = label_encodings["input_ids"].reshape((batch_size, num_descs, seq_length, 1))
+    masked_logprobs = logprobs.gather(dim=-1, index=token_ids).squeeze()
+    perplexity = masked_logprobs.mean(dim=-1).exp()
+    return perplexity.to(device)
 
 def compute_desc_likelihood(samples, desc):
-    if desc == "intensive_captions":
-        logits = samples[f"{desc}_logits"]
-        batch_size, num_descs = np.array(samples[desc]).shape
-        _, seq_length = logits.shape
-        logits = logits.reshape((batch_size, num_descs, seq_length))
-        log_likelihood = logits.sum(dim=-1)
-        return torch.exp(log_likelihood)
     return samples[f"top_scores_{desc}"].squeeze().to(device)
 
-def compute_loss(samples, labels, desc, alpha):
+def compute_loss(samples, labels, desc, tau, display=False):
     desc_likelihood = compute_desc_likelihood(samples, desc)
+    desc_likelihood_temp = (desc_likelihood / tau[desc]).softmax(dim=-1)
     llm_likelihood = compute_llm_likelihood(samples, labels, desc)
-    table = wandb.table(df=pd.DataFrame({
-        "desc": desc_likelihood,
-        "llm": llm_likelihood
-    }))
-    wandb.log({"Likelihoods": table})
+    llm_likelihood_temp = (llm_likelihood / tau["llm"]).softmax(dim=-1)
+    if display:
+        table_data = {
+            "L_D": desc_likelihood[0],
+            "L_LM": llm_likelihood[0],
+            "L_D soft": (desc_likelihood).softmax(dim=-1)[0],
+            "L_LM soft": (llm_likelihood).softmax(dim=-1)[0],
+            "L_D temp": desc_likelihood_temp[0],
+            "L_LM temp": llm_likelihood_temp[0]
+        }
+        for k, v in table_data.items():
+            table_data[k] = v.detach().numpy()
+        table_data["tags"] = samples["tags"][0]
+        table = wandb.Table(data=pd.DataFrame(table_data))
+        wandb.log({"Likelihoods": table})
     kl_penalty = F.kl_div(
-        desc_likelihood.log_softmax(dim=-1), llm_likelihood.log_softmax(dim=-1),
+        desc_likelihood_temp.log(), llm_likelihood_temp.log(),
         reduction="batchmean", log_target=True
     )
-    return alpha * kl_penalty
+    return kl_penalty
 
 def forward(batch, question, descs):
     inputs = processor(batch['image'], question)
@@ -88,8 +87,8 @@ def forward(batch, question, descs):
     )
     return samples
 
-def compute_accuracy(batch, samples, ):
-    input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
+def compute_accuracy(batch, samples):
+    input_ids = tokenizer(samples["prompts"], return_tensors="pt", padding=True).input_ids
     outputs = llm_model.generate(input_ids)
     predictions = np.array([
         pred.replace("</pad>", "").replace("</s", "").strip()
@@ -99,7 +98,7 @@ def compute_accuracy(batch, samples, ):
     acc = (predictions == answers).mean()
     return acc
 
-def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
+def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
@@ -109,23 +108,26 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, 
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
-    alphas = {
-        "tags": 1,
-        "attributes": 100
+    tau = {
+        "tags": .1,
+        "llm": 1e-3,
     }
 
     for epoch in range(num_epochs):
         #Compute train loss
         best_train_loss, best_i = float('inf'), 0
         for i, batch in enumerate(train_dataloader):
-            if i > (train_size // batch_size) or (best_i - i) >= early:
+            if i >= (train_size // batch_size) or (best_i - i) >= early:
                 continue
             optimizer.zero_grad()
             samples = forward(batch, question, descs)
             train_loss = 0
             for desc in descs:
-                kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
-                wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
+                kl_penalty = compute_loss(
+                    samples, batch['caption'], desc, 
+                    tau, display=(i==0)
+                )
+                #wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
             if train_loss < best_train_loss:
                 best_train_loss = train_loss
@@ -136,32 +138,32 @@ def train(descs, num_epochs=5, lr=1e-5, batch_size=8, train_size=8, val_size=8, 
             torch.save(lens_model.state_dict(), save_path)
 
         # Compute train accuracy
-        for i, batch in enumerate(train_dataloader):
-            if i > (train_size // batch_size):
-                continue
-            samples = forward(batch, question, descs)
-            train_acc = compute_accuracy(batch, samples)
-            wandb.log({"train_acc": train_acc})
+        #for i, batch in enumerate(train_dataloader):
+            #if i > (train_size // batch_size):
+            #    continue
+            #samples = forward(batch, question, descs)
+            #train_acc = compute_accuracy(batch, samples)
+            #wandb.log({"train_acc": train_acc})
 
         #Compute val loss
         for i, batch in enumerate(val_dataloader):
-            if i > (val_size // batch_size):
+            if i >= (val_size // batch_size):
                 continue
             val_loss = 0
             samples = forward(batch, question, descs)
             for j, desc in enumerate(descs):
-                kl_penalty = compute_loss(samples, batch['caption'], desc, alphas[desc])
-                wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
+                kl_penalty = compute_loss(samples, batch['caption'], desc, tau)
+                #wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
             wandb.log({"val_loss": val_loss})
 
         # Compute val accuracy
-        for i, batch in enumerate(val_dataloader):
-            if i > (val_size // batch_size):
-                continue
-            samples = forward(batch, question, descs)
-            val_acc = compute_accuracy(batch, samples)
-            wandb.log({"val_acc": val_acc})
+        #for i, batch in enumerate(val_dataloader):
+            #if i > (val_size // batch_size):
+                #continue
+            #samples = forward(batch, question, descs)
+            #val_acc = compute_accuracy(batch, samples)
+            #wandb.log({"val_acc": val_acc})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
