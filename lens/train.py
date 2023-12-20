@@ -33,9 +33,11 @@ def compute_llm_likelihood(samples, labels, desc):
                 question_prompt=samples["questions"][i]
             )
             input_texts.append(f"{prompt} {labels[i]}")
-    results = perplexity.compute(model_id='t5',
-                                 predictions=input_texts)
-    return torch.tensor(results["perplexities"]).to(device)
+    results = perplexity.compute(
+        model_id='t5', predictions=input_texts
+    )
+    perplexities = torch.tensor(results["perplexities"]).reshape((batch_size, num_descs))
+    return perplexities.to(device)
     #Get logits for groundtruth sequence when conditioned on each prompt
     # outputs = llm_model(
     #     input_ids=prompt_encodings["input_ids"],
