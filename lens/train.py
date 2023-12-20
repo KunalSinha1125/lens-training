@@ -13,41 +13,44 @@ import wandb
 import matplotlib.pyplot
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import pandas as pd
+from evaluate import load
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
 processor = LensProcessor()
-tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
-llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
+# tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
+# llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
+perplexity = load("perplexity", module_type="metric")
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
     #Encode prompts and groundtruth answers
-    all_prompts, all_labels = [], []
+    input_texts = []
     for i in range(batch_size):
         for j in range(num_descs):
-            all_prompts.append(create_prompt_sample(
+            prompt = create_prompt_sample(
                 samples, i, desc_idx=j, mode=f"{desc}_only_single",
                 question_prompt=samples["questions"][i]
-            ))
-            all_labels.append(labels[i])
-    prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
-    label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
+            )
+            input_texts.append(f"{prompt} {labels[i]}")
+    results = perplexity.compute(model_id='t5',
+                                 predictions=input_texts)
+    return torch.tensor(results["perplexities"]).to(device)
     #Get logits for groundtruth sequence when conditioned on each prompt
-    outputs = llm_model(
-        input_ids=prompt_encodings["input_ids"],
-        attention_mask=prompt_encodings["attention_mask"],
-        labels=label_encodings["input_ids"]
-    )
-    #Compute logprobs based on logits
-    _, seq_length, vocab_size = outputs.logits.shape
-    logits = outputs.logits.reshape((batch_size, num_descs, seq_length, vocab_size))
-    logprobs = logits.log_softmax(dim=-1)
-    #Return perplexity rather than likelihood to avoid underflow
-    token_ids = label_encodings["input_ids"].reshape((batch_size, num_descs, seq_length, 1))
-    masked_logprobs = logprobs.gather(dim=-1, index=token_ids).squeeze()
-    perplexity = masked_logprobs.mean(dim=-1).exp()
-    return perplexity.to(device)
+    # outputs = llm_model(
+    #     input_ids=prompt_encodings["input_ids"],
+    #     attention_mask=prompt_encodings["attention_mask"],
+    #     labels=label_encodings["input_ids"]
+    # )
+    # #Compute logprobs based on logits
+    # _, seq_length, vocab_size = outputs.logits.shape
+    # logits = outputs.logits.reshape((batch_size, num_descs, seq_length, vocab_size))
+    # logprobs = logits.log_softmax(dim=-1)
+    # #Return perplexity rather than likelihood to avoid underflow
+    # token_ids = label_encodings["input_ids"].reshape((batch_size, num_descs, seq_length, 1))
+    # masked_logprobs = logprobs.gather(dim=-1, index=token_ids).squeeze()
+    # perplexity = masked_logprobs.mean(dim=-1).exp()
+    # return perplexity.to(device)
 
 def compute_desc_likelihood(samples, desc):
     return samples[f"top_scores_{desc}"].squeeze().to(device)
@@ -87,16 +90,16 @@ def forward(batch, question, descs):
     )
     return samples
 
-def compute_accuracy(batch, samples):
-    input_ids = tokenizer(samples["prompts"], return_tensors="pt", padding=True).input_ids
-    outputs = llm_model.generate(input_ids)
-    predictions = np.array([
-        pred.replace("</pad>", "").replace("</s", "").strip()
-        for pred in tokenizer.batch_decode(outputs)
-    ])
-    answers = np.array(batch["captions"])
-    acc = (predictions == answers).mean()
-    return acc
+# def compute_accuracy(batch, samples):
+#     input_ids = tokenizer(samples["prompts"], return_tensors="pt", padding=True).input_ids
+#     outputs = llm_model.generate(input_ids)
+#     predictions = np.array([
+#         pred.replace("</pad>", "").replace("</s", "").strip()
+#         for pred in tokenizer.batch_decode(outputs)
+#     ])
+#     answers = np.array(batch["captions"])
+#     acc = (predictions == answers).mean()
+#     return acc
 
 def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
     wandb.init(project="lens-training-coco-dataset")
@@ -110,7 +113,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
     torch.autograd.set_detect_anomaly(True)
     tau = {
         "tags": .1,
-        "llm": 1e-3,
+        "llm": 1,
     }
 
     for epoch in range(num_epochs):
