@@ -74,9 +74,9 @@ def compute_loss(samples, labels, desc, plot_name=None):
             table_data[k] = v.detach().cpu().numpy()
         table_data["tags"] = samples["tags"][0]
         table = wandb.Table(data=pd.DataFrame(table_data))
-        wandb.log({f"{plot_name}_table": table})
+        #wandb.log({f"{plot_name}_table": table})
         plot = wandb.plot.scatter(
-            table, "L_D", "L_LM", title=f"{plot_name}"
+            table, "L_D soft", "L_LM soft", title=f"{plot_name}"
         )
         wandb.log({plot_name: plot})
     kl_penalty = F.kl_div(
@@ -129,7 +129,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             for desc in descs:
                 kl_penalty = compute_loss(
                     samples, batch['caption'], desc,
-                    plot_name=f"train_likelihoods_{epoch}"
+                    plot_name=f"train_likelihoods_{epoch}" if epoch % 5 == 0 else None
                 )
                 #wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
@@ -158,7 +158,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             for desc in descs:
                 kl_penalty = compute_loss(
                     samples, batch['caption'], desc, 
-                    plot_name=f"val_likelihoods_{epoch}"
+                    plot_name=f"val_likelihoods_{epoch}" if epoch % 5 == 0 else None
                 )
                 #wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
