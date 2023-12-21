@@ -37,6 +37,7 @@ def compute_llm_likelihood(samples, labels, desc):
         model_id='gpt2', predictions=input_texts
     )
     perplexities = torch.tensor(results["perplexities"]).reshape((batch_size, num_descs))
+    perplexities.requires_grad = False
     return perplexities.to(device, dtype=torch.float64)
     #Get logits for groundtruth sequence when conditioned on each prompt
     # outputs = llm_model(
