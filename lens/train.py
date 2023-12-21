@@ -58,12 +58,12 @@ def compute_desc_likelihood(samples, desc):
     scores = samples[f"top_scores_{desc}"].squeeze()
     return scores.to(device, dtype=torch.float64)
 
-def compute_loss(samples, labels, desc, display="train"):
+def compute_loss(samples, labels, desc, plot_name=None):
     desc_likelihood = compute_desc_likelihood(samples, desc)
     desc_likelihood_soft = desc_likelihood.softmax(dim=-1)
     llm_likelihood = compute_llm_likelihood(samples, labels, desc)
     llm_likelihood_soft = llm_likelihood.softmax(dim=-1)
-    if display:
+    if plot_name:
         table_data = {
             "L_D": desc_likelihood[0],
             "L_LM": llm_likelihood[0],
@@ -74,7 +74,13 @@ def compute_loss(samples, labels, desc, display="train"):
             table_data[k] = v.detach().cpu().numpy()
         table_data["tags"] = samples["tags"][0]
         table = wandb.Table(data=pd.DataFrame(table_data))
-        wandb.log({f"{display}_likelihoods": table})
+        wandb.log({f"{plot_name}_table": table})
+        plot = wandb.plot.scatter(
+            x=desc_likelihood_soft.detach().cpu().numpy(),
+            y=llm_likelihood_soft.detach().cpu().numpy(),
+            title=f"{plot_name}"
+        )
+        wandb.log({plot_name: plot})
     kl_penalty = F.kl_div(
         desc_likelihood_soft.log(), llm_likelihood_soft.log(),
         reduction="batchmean", log_target=True
