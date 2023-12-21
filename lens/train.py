@@ -58,7 +58,7 @@ def compute_desc_likelihood(samples, desc):
     scores = samples[f"top_scores_{desc}"].squeeze()
     return scores.to(device, dtype=torch.float64)
 
-def compute_loss(samples, labels, desc, display=False):
+def compute_loss(samples, labels, desc, display="train"):
     desc_likelihood = compute_desc_likelihood(samples, desc)
     desc_likelihood_soft = desc_likelihood.softmax(dim=-1)
     llm_likelihood = compute_llm_likelihood(samples, labels, desc)
@@ -74,7 +74,7 @@ def compute_loss(samples, labels, desc, display=False):
             table_data[k] = v.detach().cpu().numpy()
         table_data["tags"] = samples["tags"][0]
         table = wandb.Table(data=pd.DataFrame(table_data))
-        wandb.log({"Likelihoods": table})
+        wandb.log({f"{display}_likelihoods": table})
     kl_penalty = F.kl_div(
         desc_likelihood_soft.log(), llm_likelihood_soft.log(),
         reduction="batchmean", log_target=True
@@ -123,9 +123,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             samples = forward(batch, question, descs)
             train_loss = 0
             for desc in descs:
-                kl_penalty = compute_loss(
-                    samples, batch['caption'], desc, display=True
-                )
+                kl_penalty = compute_loss(samples, batch['caption'], desc)
                 #wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
             if train_loss < best_train_loss:
@@ -150,8 +148,10 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
                 continue
             val_loss = 0
             samples = forward(batch, question, descs)
-            for j, desc in enumerate(descs):
-                kl_penalty = compute_loss(samples, batch['caption'], desc)
+            for desc in descs:
+                kl_penalty = compute_loss(
+                    samples, batch['caption'], desc, display="val"
+                )
                 #wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
             wandb.log({"val_loss": val_loss})
