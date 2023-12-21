@@ -34,10 +34,10 @@ def compute_llm_likelihood(samples, labels, desc):
             )
             input_texts.append(f"{prompt} {labels[i]}")
     results = perplexity.compute(
-        model_id='t5', predictions=input_texts
+        model_id='gpt2', predictions=input_texts
     )
     perplexities = torch.tensor(results["perplexities"]).reshape((batch_size, num_descs))
-    return perplexities.to(device)
+    return perplexities.to(device, dtype=torch.float64)
     #Get logits for groundtruth sequence when conditioned on each prompt
     # outputs = llm_model(
     #     input_ids=prompt_encodings["input_ids"],
@@ -55,29 +55,28 @@ def compute_llm_likelihood(samples, labels, desc):
     # return perplexity.to(device)
 
 def compute_desc_likelihood(samples, desc):
-    return samples[f"top_scores_{desc}"].squeeze().to(device)
+    scores = samples[f"top_scores_{desc}"].squeeze()
+    return scores.to(device, dtype=torch.float64)
 
-def compute_loss(samples, labels, desc, tau, display=False):
+def compute_loss(samples, labels, desc, display=False):
     desc_likelihood = compute_desc_likelihood(samples, desc)
-    desc_likelihood_temp = (desc_likelihood / tau[desc]).softmax(dim=-1)
+    desc_likelihood_soft = desc_likelihood.softmax(dim=-1)
     llm_likelihood = compute_llm_likelihood(samples, labels, desc)
-    llm_likelihood_temp = (llm_likelihood / tau["llm"]).softmax(dim=-1)
+    llm_likelihood_soft = llm_likelihood.softmax(dim=-1)
     if display:
         table_data = {
             "L_D": desc_likelihood[0],
             "L_LM": llm_likelihood[0],
-            "L_D soft": (desc_likelihood).softmax(dim=-1)[0],
-            "L_LM soft": (llm_likelihood).softmax(dim=-1)[0],
-            "L_D temp": desc_likelihood_temp[0],
-            "L_LM temp": llm_likelihood_temp[0]
+            "L_D soft": desc_likelihood_soft[0],
+            "L_LM soft": llm_likelihood_soft[0],
         }
         for k, v in table_data.items():
-            table_data[k] = v.detach().numpy()
+            table_data[k] = v.detach().cpu().numpy()
         table_data["tags"] = samples["tags"][0]
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({"Likelihoods": table})
     kl_penalty = F.kl_div(
-        desc_likelihood_temp.log(), llm_likelihood_temp.log(),
+        desc_likelihood_soft.log(), llm_likelihood_soft.log(),
         reduction="batchmean", log_target=True
     )
     return kl_penalty
@@ -113,10 +112,6 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
-    tau = {
-        "tags": .1,
-        "llm": 1,
-    }
 
     for epoch in range(num_epochs):
         #Compute train loss
@@ -129,8 +124,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             train_loss = 0
             for desc in descs:
                 kl_penalty = compute_loss(
-                    samples, batch['caption'], desc, 
-                    tau, display=(i==0)
+                    samples, batch['caption'], desc, display=True
                 )
                 #wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
@@ -157,7 +151,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             val_loss = 0
             samples = forward(batch, question, descs)
             for j, desc in enumerate(descs):
-                kl_penalty = compute_loss(samples, batch['caption'], desc, tau)
+                kl_penalty = compute_loss(samples, batch['caption'], desc)
                 #wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
             wandb.log({"val_loss": val_loss})
