@@ -186,7 +186,7 @@ def create_prompt_sample(
         raise Exception("Mode not available")
     return prompt
 
-def calculate_perplexity(model, encodings):
+def compute_perplexity(model, encodings):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     max_length = model.config.n_positions

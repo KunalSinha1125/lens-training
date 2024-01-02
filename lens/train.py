@@ -2,10 +2,10 @@ from model import Lens, LensDataset, LensProcessor
 import requests
 from PIL import Image
 from scipy.special import rel_entr
-from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast
+from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import numpy as np
-from utils import create_prompt_sample, create_dataloader, create_sampler, calculate_perplexity
+from utils import create_prompt_sample, create_dataloader, create_sampler, compute_perplexity
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset
@@ -18,14 +18,14 @@ from evaluate import load
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
 processor = LensProcessor()
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2")
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
+llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
 # perplexity = load("perplexity", module_type="metric")
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
     #Encode prompts and groundtruth answers
-    all_prompts, all_labels = []
+    all_prompts, all_labels = [], []
     for i in range(batch_size):
         for j in range(num_descs):
             all_prompts.append(create_prompt_sample(
@@ -33,8 +33,9 @@ def compute_llm_likelihood(samples, labels, desc):
                 question_prompt=samples["questions"][i]
             ))
             all_labels.append(labels[i])
-    # prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
-    # label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
+    prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
+    label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
+    ppl = compute_perplexity(llm_model, prompt_encodings)
     # outputs = llm_model(
     #     input_ids=prompt_encodings["input_ids"],
     #     attention_mask=prompt_encodings["attention_mask"],
