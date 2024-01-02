@@ -5,7 +5,7 @@ from scipy.special import rel_entr
 from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast
 import torch
 import numpy as np
-from utils import create_prompt_sample, create_dataloader, create_sampler
+from utils import create_prompt_sample, create_dataloader, create_sampler, calculate_perplexity
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset
@@ -33,14 +33,14 @@ def compute_llm_likelihood(samples, labels, desc):
                 question_prompt=samples["questions"][i]
             ))
             all_labels.append(labels[i])
-    prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
-    label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
-    outputs = llm_model(
-        input_ids=prompt_encodings["input_ids"],
-        attention_mask=prompt_encodings["attention_mask"],
-        labels=label_encodings["input_ids"]
-    )
-    return outputs.loss
+    # prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
+    # label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
+    # outputs = llm_model(
+    #     input_ids=prompt_encodings["input_ids"],
+    #     attention_mask=prompt_encodings["attention_mask"],
+    #     labels=label_encodings["input_ids"]
+    # )
+    # return outputs.loss
     # results = perplexity.compute(
     #     model_id='gpt2', predictions=input_texts
     # )
