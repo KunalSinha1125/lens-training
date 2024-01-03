@@ -5,7 +5,7 @@ from scipy.special import rel_entr
 from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import numpy as np
-from utils import create_prompt_sample, create_dataloader, create_sampler, compute_perplexity
+from utils import create_prompt_sample, create_dataloader, create_sampler
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from datasets import Dataset, load_dataset
@@ -20,7 +20,15 @@ lens_model = Lens()
 processor = LensProcessor()
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
 llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
-# perplexity = load("perplexity", module_type="metric")
+
+def compute_perplexity(model, prompt_encodings, label_encodings):
+    encodings = torch.cat([prompt_encodings, label_encodings], dim=-1)
+    answer_len = label_encodings.input_ids.size(1)
+    input_ids = encodings.input_ids.to(device)
+    label_ids = input_ids.clone()
+    label_ids[:, :-answer_len] = -100
+    outputs = model(input_ids, labels=label_ids)
+    return outputs.loss
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
@@ -40,32 +48,6 @@ def compute_llm_likelihood(samples, labels, desc):
         for i in range(len(all_prompts))
     ])
     return loss
-    # outputs = llm_model(
-    #     input_ids=prompt_encodings["input_ids"],
-    #     attention_mask=prompt_encodings["attention_mask"],
-    #     labels=label_encodings["input_ids"]
-    # )
-    # return outputs.loss
-    # results = perplexity.compute(
-    #     model_id='gpt2', predictions=input_texts
-    # )
-    # perplexities = torch.tensor(results["perplexities"]).reshape((batch_size, num_descs))
-    # return perplexities.to(device, dtype=torch.float64)
-    #Get logits for groundtruth sequence when conditioned on each prompt
-    # outputs = llm_model(
-    #     input_ids=prompt_encodings["input_ids"],
-    #     attention_mask=prompt_encodings["attention_mask"],
-    #     labels=label_encodings["input_ids"]
-    # )
-    # #Compute logprobs based on logits
-    # _, seq_length, vocab_size = outputs.logits.shape
-    # logits = outputs.logits.reshape((batch_size, num_descs, seq_length, vocab_size))
-    # logprobs = logits.log_softmax(dim=-1)
-    # #Return perplexity rather than likelihood to avoid underflow
-    # token_ids = label_encodings["input_ids"].reshape((batch_size, num_descs, seq_length, 1))
-    # masked_logprobs = logprobs.gather(dim=-1, index=token_ids).squeeze()
-    # perplexity = masked_logprobs.mean(dim=-1).exp()
-    # return perplexity.to(device)
 
 def compute_desc_likelihood(samples, desc):
     scores = samples[f"top_scores_{desc}"].squeeze()
