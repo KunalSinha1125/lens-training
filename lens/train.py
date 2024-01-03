@@ -35,7 +35,11 @@ def compute_llm_likelihood(samples, labels, desc):
             all_labels.append(labels[i])
     prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
     label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
-    ppl = compute_perplexity(llm_model, prompt_encodings)
+    loss = torch.tensor([
+        compute_perplexity(llm_model, prompt_encodings[i], label_encodings[i])
+        for i in range(len(all_prompts))
+    ])
+    return loss
     # outputs = llm_model(
     #     input_ids=prompt_encodings["input_ids"],
     #     attention_mask=prompt_encodings["attention_mask"],
