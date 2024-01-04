@@ -21,33 +21,39 @@ processor = LensProcessor()
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
 llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
 
-def compute_perplexity(model, prompt_encodings, label_encodings):
-    encodings = torch.cat([prompt_encodings, label_encodings], dim=-1)
-    answer_len = label_encodings.input_ids.size(1)
-    input_ids = encodings.input_ids.to(device)
-    label_ids = input_ids.clone()
-    label_ids[:, :-answer_len] = -100
-    outputs = model(input_ids, labels=label_ids)
-    return outputs.loss
+def compute_perplexity(prompt_ids, label_ids, ignore_index=-100):
+    input_ids = torch.cat([prompt_ids, label_ids], dim=-1)
+    num_seqs, seq_len = input_ids.shape
+    target_ids = input_ids.clone()
+    #Ignore prompt and padding tokens in loss calculation
+    target_ids[:, :prompt_ids.size(-1)] = ignore_index
+    target_ids[target_ids == tokenizer.pad_token_id] = ignore_index
+    logits = llm_model(input_ids, labels=target_ids).logits
+    loss = F.cross_entropy(
+        logits.reshape((num_seqs * seq_len, -1)),
+        target_ids.reshape((num_seqs * seq_len)),
+        reduction="none",
+        ignore_index=ignore_index
+    )
+    return -loss.reshape((num_seqs, seq_len)).mean(dim=-1)
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
     #Encode prompts and groundtruth answers
+    #losses = torch.zeros((batch_size, num_descs))
     all_prompts, all_labels = [], []
     for i in range(batch_size):
         for j in range(num_descs):
-            all_prompts.append(create_prompt_sample(
+            prompt = create_prompt_sample(
                 samples, i, desc_idx=j, mode=f"{desc}_only_single",
                 question_prompt=samples["questions"][i]
-            ))
+            )
+            all_prompts.append(prompt)
             all_labels.append(labels[i])
-    prompt_encodings = tokenizer(all_prompts, return_tensors="pt", padding=True)
-    label_encodings = tokenizer(all_labels, return_tensors="pt", padding=True)
-    loss = torch.tensor([
-        compute_perplexity(llm_model, prompt_encodings[i], label_encodings[i])
-        for i in range(len(all_prompts))
-    ])
-    return loss
+    prompt_ids = tokenizer(all_prompts, return_tensors="pt", padding=True).input_ids
+    label_ids = tokenizer(all_labels, return_tensors="pt", padding=True).input_ids
+    loss = compute_perplexity(prompt_ids, label_ids).reshape((batch_size, num_descs))
+    return loss.to(device, dtype=torch.float64)
 
 def compute_desc_likelihood(samples, desc):
     scores = samples[f"top_scores_{desc}"].squeeze()
@@ -101,7 +107,7 @@ def forward(batch, question, descs):
 #     acc = (predictions == answers).mean()
 #     return acc
 
-def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=8, early=5):
+def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=800, val_size=800, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
