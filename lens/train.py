@@ -2,7 +2,7 @@ from model import Lens, LensDataset, LensProcessor
 import requests
 from PIL import Image
 from scipy.special import rel_entr
-from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast
 import torch
 import numpy as np
 from utils import create_prompt_sample, create_dataloader, create_sampler
@@ -18,8 +18,8 @@ from evaluate import load
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
 processor = LensProcessor()
-tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
-llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
+llm_model = GPT2LMHeadModel.from_pretrained("gpt2")
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2", padding=True)
 
 def compute_perplexity(prompt_ids, label_ids, ignore_index=-100):
     input_ids = torch.cat([prompt_ids, label_ids], dim=-1)
@@ -107,7 +107,7 @@ def forward(batch, question, descs):
 #     acc = (predictions == answers).mean()
 #     return acc
 
-def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=800, val_size=800, early=5):
+def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=64, early=5):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
