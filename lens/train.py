@@ -107,7 +107,7 @@ def forward(batch, question, descs):
 #     acc = (predictions == answers).mean()
 #     return acc
 
-def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=64, early=5):
+def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=64):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
@@ -120,9 +120,9 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
 
     for epoch in range(num_epochs):
         #Compute train loss
-        best_train_loss, best_i = float('inf'), 0
+        train_loss_epoch = 0
         for i, batch in enumerate(train_dataloader):
-            if i >= (train_size // batch_size) or (best_i - i) >= early:
+            if i >= (train_size // batch_size):
                 continue
             optimizer.zero_grad()
             samples = forward(batch, question, descs)
@@ -130,17 +130,15 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             for desc in descs:
                 kl_penalty = compute_loss(
                     samples, batch['caption'], desc,
-                    plot_name=f"train_likelihoods_{epoch}" if epoch % 5 == 0 else None
+                    plot_name=f"train_likelihoods_{epoch}" if epoch == 0 else None
                 )
-                #wandb.log({f"train_kl_penalty_{desc}": kl_penalty})
                 train_loss += kl_penalty
-            if train_loss < best_train_loss:
-                best_train_loss = train_loss
-                best_i = i
             wandb.log({"train_loss": train_loss})
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
+            train_loss_epoch += train_loss
+        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
 
         # Compute train accuracy
         #for i, batch in enumerate(train_dataloader):
@@ -151,6 +149,7 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             #wandb.log({"train_acc": train_acc})
 
         #Compute val loss
+        val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
@@ -159,11 +158,12 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             for desc in descs:
                 kl_penalty = compute_loss(
                     samples, batch['caption'], desc, 
-                    plot_name=f"val_likelihoods_{epoch}" if epoch % 5 == 0 else None
+                    plot_name=f"val_likelihoods_{epoch}" if epoch == 0 else None
                 )
-                #wandb.log({f"val_kl_penalty_{desc}": kl_penalty})
                 val_loss += kl_penalty
             wandb.log({"val_loss": val_loss})
+            val_loss_epoch += val_loss
+        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
 
         # Compute val accuracy
         #for i, batch in enumerate(val_dataloader):
