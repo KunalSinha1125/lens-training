@@ -50,6 +50,7 @@ def compute_llm_likelihood(samples, labels, desc):
             )
             all_prompts.append(prompt)
             all_labels.append(labels[i])
+    tokenizer.pad_token_id = tokenizer.eos_token_id
     prompt_ids = tokenizer(all_prompts, return_tensors="pt", padding=True).input_ids
     label_ids = tokenizer(all_labels, return_tensors="pt", padding=True).input_ids
     loss = compute_perplexity(prompt_ids, label_ids).reshape((batch_size, num_descs))
