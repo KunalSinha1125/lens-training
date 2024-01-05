@@ -21,7 +21,7 @@ processor = LensProcessor()
 llm_model = GPT2LMHeadModel.from_pretrained("gpt2")
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2", padding=True)
 
-def compute_perplexity(prompt_ids, label_ids, ignore_index=-100):
+def compute_cross_entropy(prompt_ids, label_ids, ignore_index=-100):
     input_ids = torch.cat([prompt_ids, label_ids], dim=-1)
     num_seqs, seq_len = input_ids.shape
     target_ids = input_ids.clone()
@@ -35,7 +35,7 @@ def compute_perplexity(prompt_ids, label_ids, ignore_index=-100):
         reduction="none",
         ignore_index=ignore_index
     )
-    return -loss.reshape((num_seqs, seq_len)).mean(dim=-1)
+    return loss.reshape((num_seqs, seq_len)).mean(dim=-1)
 
 def compute_llm_likelihood(samples, labels, desc):
     batch_size, num_descs = np.array(samples[desc]).shape
@@ -53,7 +53,7 @@ def compute_llm_likelihood(samples, labels, desc):
     tokenizer.pad_token_id = tokenizer.eos_token_id
     prompt_ids = tokenizer(all_prompts, return_tensors="pt", padding=True).input_ids
     label_ids = tokenizer(all_labels, return_tensors="pt", padding=True).input_ids
-    loss = compute_perplexity(prompt_ids, label_ids).reshape((batch_size, num_descs))
+    loss = compute_cross_entropy(prompt_ids, label_ids).reshape((batch_size, num_descs))
     return loss.to(device, dtype=torch.float64)
 
 def compute_desc_likelihood(samples, desc):
