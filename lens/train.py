@@ -2,7 +2,7 @@ from model import Lens, LensDataset, LensProcessor
 import requests
 from PIL import Image
 from scipy.special import rel_entr
-from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast
+from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
 import numpy as np
 from utils import create_prompt_sample, create_dataloader, create_sampler
@@ -18,8 +18,8 @@ from evaluate import load
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 lens_model = Lens()
 processor = LensProcessor()
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2")
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2", padding=True)
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", truncation_side='left', padding=True)
+llm_model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small")
 
 def compute_cross_entropy(prompt_ids, label_ids, ignore_index=-100):
     input_ids = torch.cat([prompt_ids, label_ids], dim=-1)
@@ -50,7 +50,7 @@ def compute_llm_likelihood(samples, labels, desc):
             )
             all_prompts.append(prompt)
             all_labels.append(labels[i])
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    # tokenizer.pad_token_id = tokenizer.eos_token_id
     prompt_ids = tokenizer(all_prompts, return_tensors="pt", padding=True).input_ids
     label_ids = tokenizer(all_labels, return_tensors="pt", padding=True).input_ids
     loss = compute_cross_entropy(prompt_ids, label_ids).reshape((batch_size, num_descs))
