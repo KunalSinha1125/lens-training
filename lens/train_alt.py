@@ -24,25 +24,23 @@ IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=1.0):
     bsz, k = np.array(samples["tags"]).shape
-    all_prompts, all_labels = [], []
+    prompts = []
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
                 samples, i, desc_idx=j, mode=f"tags_only_single",
                 question_prompt=samples["questions"][i]
             )
-            all_prompts.append(prompt)
-            all_labels.append(labels[i])
+            prompts.append(prompt)
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    prompt_tokens = tokenizer(all_prompts, return_tensors="pt", padding=True)
-    label_tokens = tokenizer(all_labels, return_tensors="pt", padding=True)
+    prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True)
+    label_tokens = tokenizer(labels, return_tensors="pt", padding=True)
 
     reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
     answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
 
-    retrieved_tags = tokenizer(samples["tags"], return_tensors="pt", padding=True).input_ids
-    repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], retrieved_tags, dim=1).view(-1, answer_tok.shape[-1])
-    repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], retrieved_tags, dim=1).view(-1, answer_mask.shape[-1])
+    repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=1).view(-1, answer_tok.shape[-1])
+    repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], k, dim=1).view(-1, answer_mask.shape[-1])
     reader_tok = reader_tok.reshape(-1, reader_tok.shape[-1])
     reader_mask = reader_mask.reshape(-1, reader_mask.shape[-1])
 
@@ -105,7 +103,7 @@ def forward(batch, question):
     )
     return samples
 
-def train(num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=64):
+def train(num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=400):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_tags.pt"
     question = ["What is the image about" for i in range(batch_size)]
