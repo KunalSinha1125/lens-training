@@ -100,7 +100,7 @@ def create_prompt_sample(
     intensive_captions_col="intensive_captions",
     question_col="questions",
     question_prompt=None,
-    num_intensive_captions=50,
+    num_intensive_captions=5,
     mode="all",
 ):
     prompt = ""
@@ -136,11 +136,21 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only_single":
-        prompt += "Tag: "
+        prompt += "Captions:"
+        prompt += ".".join(
+            samples[intensive_captions_col][idx][:num_intensive_captions]
+        )
+        prompt += "\nTag: "
         prompt += samples[tags_col][idx][desc_idx]
         prompt += "\nQuestion:"
         prompt += question
         prompt += "\nShort Answer:"
+
+    elif mode == "tags_only_single_phi2":
+        tag = samples[tags_col][idx][desc_idx]
+        #prompt = f"Instruct: Describe the image whose tag is {tag}.\nOutput:"
+        #prompt = f'''Alice: can you tell me what you see in this image? The image tags are [{tag}].\nBob:'''
+        prompt = f"Describe the given image."
 
     elif mode == "attributes_only":
         prompt += "Attribute: "

@@ -118,14 +118,14 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 250,
-        num_attributes: int = 250,
+        num_tags: int = 5,
+        num_attributes: int = 3,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
         max_length: int = 30,
         min_length: int = 10,
         top_k: int = 2,
-        num_captions: int = 10,
+        num_captions: int = 5,
         return_tags: bool = True,
         return_attributes: bool = True,
         return_global_caption: bool = False,
@@ -168,7 +168,7 @@ class Lens(nn.Module):
         return samples
 
     def forward_tags(
-        self, samples: dict, num_tags: int = 500, contrastive_th: float = 0.2
+        self, samples: dict, num_tags: int = 100, contrastive_th: float = 0.2
     ):
         # Get Image Features
         tags = []
@@ -186,11 +186,11 @@ class Lens(nn.Module):
             k=num_tags if num_tags else len(text_scores.squeeze()), dim=-1
         )
         for scores, indexes in zip(top_scores, top_indexes):
-            filter_indexes = indexes[scores >= contrastive_th]
-            if len(filter_indexes) > 0:
-                top_k_tags = [self.vocab_tags[index] for index in filter_indexes]
-            else:
-                top_k_tags = []
+            #filter_indexes = indexes[scores >= contrastive_th]
+            #if len(filter_indexes) > 0:
+            top_k_tags = [self.vocab_tags[index] for index in indexes]
+            #else:
+            #    top_k_tags = []
             tags.append(top_k_tags)
         samples[f"tags"] = tags
         samples[f"top_scores_tags"] = top_scores

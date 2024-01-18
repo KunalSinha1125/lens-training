@@ -108,7 +108,7 @@ def forward(batch, question, descs):
 #     acc = (predictions == answers).mean()
 #     return acc
 
-def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=64):
+def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size=400):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_" + "_".join(descs) + ".pt"
     question = ["What is the image about" for i in range(batch_size)]
@@ -129,16 +129,13 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
             samples = forward(batch, question, descs)
             train_loss = 0
             for desc in descs:
-                kl_penalty = compute_loss(
-                    samples, batch['caption'], desc,
-                    plot_name=f"train_likelihoods_{epoch}" if epoch == 0 else None
-                )
+                kl_penalty = compute_loss(samples, batch['caption'], desc)
                 train_loss += kl_penalty
-            wandb.log({"train_loss": train_loss})
+            #wandb.log({"train_loss": train_loss})
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
-            train_loss_epoch += train_loss
+            train_loss_epoch += train_loss.item()
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
 
         # Compute train accuracy
@@ -154,15 +151,13 @@ def train(descs, num_epochs=50000, lr=1e-5, batch_size=8, train_size=8, val_size
         for i, batch in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
-            val_loss = 0
             samples = forward(batch, question, descs)
+            val_loss = 0
             for desc in descs:
-                kl_penalty = compute_loss(
-                    samples, batch['caption'], desc, 
-                    plot_name=f"val_likelihoods_{epoch}" if epoch == 0 else None
-                )
+                plot_name = "train likelihoods" if i == 0 and epoch == 0 else None
+                kl_penalty = compute_loss(samples, batch['caption'], desc, plot_name=plot_name).item()
                 val_loss += kl_penalty
-            wandb.log({"val_loss": val_loss})
+            #wandb.log({"val_loss": val_loss})
             val_loss_epoch += val_loss
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
 
