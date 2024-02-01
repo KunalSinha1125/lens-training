@@ -136,15 +136,19 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only_single":
-        prompt += "Captions:"
-        prompt += ".".join(
-            samples[intensive_captions_col][idx][:num_intensive_captions]
-        )
         prompt += "\nTag: "
         prompt += samples[tags_col][idx][desc_idx]
         prompt += "\nQuestion:"
         prompt += question
         prompt += "\nShort Answer:"
+
+    elif mode == "tags_only_loop":
+        tags = samples[tags_col][idx]
+        prompt += "\nTag: "
+        prompt += ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        prompt += "\nQuestion: "
+        prompt += question
+        prompt += "\nShort Answer: "
 
     elif mode == "tags_only_single_phi2":
         tag = samples[tags_col][idx][desc_idx]
@@ -165,6 +169,14 @@ def create_prompt_sample(
         prompt += "\nQuestion:"
         prompt += question
         prompt += "\nShort Answer:"
+    
+    elif mode == "attributes_only_loop":
+        attributes = samples[attributes_col][idx]
+        prompt += "Attribute: "
+        prompt += ",".join(attributes[:desc_idx] + attributes[desc_idx+1:])
+        prompt += "\nQuestion: "
+        prompt += question
+        prompt += "\nShort Answer: "
 
     elif mode == "intensive_captions_only_single":
         prompt += "Caption: "
