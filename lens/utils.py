@@ -33,19 +33,22 @@ def create_sampler(dataset, distributed=False):
     return sampler
 
 
-def create_dataloader(dataset, batch_size=8, num_workers=0):
+def create_dataloader(dataset, batch_size=8, num_workers=0, dataset_name="cifar10"):
     def collate_fn(data):
-        #batch = {'image': [], 'question': [], 'answer': []}
-        #for d in data:
-        #    batch['image'] = Image.open(requests.get(d['image_id'], stream=True).raw).convert('RGB')
-        #    batch['question'] = d['question']
-        #    answer_id = np.argmax(d['label']['weights'])
-        #    batch['answer'] = d['label']['ids'][answer_id]
-        #return batch
-        return {
-            'image': [d['image'] for d in data],
-            'caption': [d['caption'] for d in data]
-        }
+        if dataset_name == "RIW/small-coco":
+            batch = {'image': [], 'question': [], 'answer': []}
+            for d in data:
+                batch['image'] = Image.open(requests.get(d['image_id'], stream=True).raw).convert('RGB')
+                batch['question'] = d['question']
+                answer_id = np.argmax(d['label']['weights'])
+                batch['answer'] = d['label']['ids'][answer_id]
+            return batch
+        elif dataset_name == "cifar10":
+            classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+            return {
+                'image': [d['img'] for d in data],
+                'caption': [classes[int(d['label'])] for d in data]
+            }
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
