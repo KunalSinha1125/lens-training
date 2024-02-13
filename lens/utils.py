@@ -143,12 +143,19 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only_loop":
-        tags = samples[tags_col][idx]
-        prompt += "\nTag: "
-        prompt += ",".join(tags[:desc_idx] + tags[desc_idx+1:])
-        prompt += "\nQuestion: "
-        prompt += question
-        prompt += "\nShort Answer: "
+        tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        prompt += (
+            f'''Generate a detailed description of the image based on the information provided in the following image tags: 
+            Tags: {tags}
+            Short Answer: 
+            '''
+        )
+        # tags = samples[tags_col][idx]
+        # prompt += "\nTag: "
+        # prompt += ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        # prompt += "\nQuestion: "
+        # prompt += question
+        # prompt += "\nShort Answer: "
 
     elif mode == "tags_only_single_phi2":
         tag = samples[tags_col][idx][desc_idx]
