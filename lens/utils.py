@@ -146,12 +146,14 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only_loop":
-        tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
-        prompt += (
-            f'''Generate a detailed description of the image based on the information provided in the following image tags: 
-            Tags: {tags}
-            Short Answer: 
-            '''
+        tags = samples[tags_col][idx]
+        loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        prompt = (
+            f'''Provide one word to describe the image based on the information in the image tags. 
+            Tags: claws,crustacean,red,shell,underwater
+            Short Answer: crab
+            Tags: {loop_tags}
+            Short Answer: '''
         )
         # tags = samples[tags_col][idx]
         # prompt += "\nTag: "

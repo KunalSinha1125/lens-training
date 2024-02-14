@@ -24,10 +24,9 @@ tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 #perplexity = load("perplexity", module_type="metric")
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=0.1, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     prompts = []
-    k=1
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
@@ -90,7 +89,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1.0, desc="tags"):
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity
 
-def compute_tags_likelihood(samples, gamma=0.1, desc="tags"):
+def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
@@ -101,6 +100,11 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     with torch.no_grad():
         llm_likelihood, llm_perplexity = compute_llm_likelihood(samples, labels)
     if table_name:
+        #table_data = {
+        #    "Prompts": [prompt + labels[i] for i, prompt in enumerate(samples["prompts"])],
+        #}
+        #table = wandb.Table(data=pd.DataFrame(table_data))
+        #wandb.log({table_name: table})
         table_data = {
             "Tags likelihood": tags_likelihood[0],
             "Tags scores": tags_scores[0],
@@ -111,13 +115,13 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         for k, v in table_data.items():
             table_data[k] = v.detach().to(dtype=torch.float16).cpu().numpy()[indices]
         table_data[desc] = np.array(samples[desc][0])[indices]
-        table_data["Prompt"] = np.array(samples["prompts"][0])
+        #table_data["Prompt"] = np.array(samples["prompts"][0])
         table_data["Caption"] = np.array(labels[0])
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
-        plot = wandb.plot.scatter(
-            table, "LM perplexity", "Tags scores", title=f"{table_name} Likelihoods"
-        )
+        #plot = wandb.plot.scatter(
+        #    table, "LM perplexity", "Tags scores", title=f"{table_name} Likelihoods"
+        #)
         #wandb.log({f"{table_name} graph": plot})
     kl_penalty = F.kl_div(
         tags_likelihood.log(), llm_likelihood.log(),
@@ -135,18 +139,30 @@ def forward(batch, question):
     )
     return samples
 
-def train(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1, val_size=1):
+def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
-    train_ds = load_dataset("RIW/small-coco", split="train", streaming=True)
+    ds_name = "cifar10"
+    train_ds = load_dataset(ds_name, split="train", streaming=True)
     train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
-    val_ds = load_dataset("RIW/small-coco", split="validation", streaming=True)
+    val_ds = load_dataset(ds_name, split="test", streaming=True)
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
     torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(num_epochs):
+        #Compute val loss
+        val_loss_epoch = 0
+        for i, batch in enumerate(val_dataloader):
+            if i >= (val_size // batch_size): 
+                continue
+            with torch.no_grad():
+                samples = forward(batch, question)
+                val_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: val").item()
+                val_loss_epoch += val_loss
+                torch.cuda.empty_cache()
+        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         #Compute train loss
         train_loss_epoch = 0
         for i, batch in enumerate(train_dataloader):
@@ -154,26 +170,13 @@ def train(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1, val_size=1):
                 continue
             optimizer.zero_grad()
             samples = forward(batch, question)
-            batch['caption'] = ["road" for i in range(batch_size)]
-            train_loss = compute_loss(samples, batch['caption'], f"Train examples epoch {epoch} ")
+            train_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: train")
             train_loss.backward()
             optimizer.step()
             torch.save(lens_model.state_dict(), save_path)
             train_loss_epoch += train_loss.item()
-        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
-        torch.cuda.empty_cache()
-
-        #Compute val loss
-        val_loss_epoch = 0
-        for i, batch in enumerate(val_dataloader):
-            if i >= (val_size // batch_size):
-                continue
-            with torch.no_grad():
-                samples = forward(batch, question)
-                val_loss = compute_loss(samples, batch['caption'], f"Val examples epoch {epoch} ").item()
-                val_loss_epoch += val_loss
-                wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
             torch.cuda.empty_cache()
+        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
