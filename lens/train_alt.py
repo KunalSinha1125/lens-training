@@ -19,8 +19,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
 lens_model = Lens()
 processor = LensProcessor()
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2", torch_dtype=torch.float16).to(device)
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+llm_model = GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.bfloat16).to(device)
+tokenizer = GPT2TokenizerFast.from_pretrained("gpt2-xl")
 #perplexity = load("perplexity", module_type="metric")
 IGNORE_INDEX = -100
 
@@ -30,14 +30,13 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_loop",
+                samples, i, desc_idx=j, mode=f"{desc}_only_test",
                 question_prompt=samples["questions"][i]
             )
             prompts.append(prompt)
 
     tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
     prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True)
-    #tokenizer.padding_side = "right"
     label_tokens = tokenizer(labels, return_tensors="pt", padding=True)
     reader_tok, reader_mask = prompt_tokens.input_ids.to(device), prompt_tokens.attention_mask.to(device)
     answer_tok, answer_mask = label_tokens.input_ids.to(device), label_tokens.attention_mask.to(device)
@@ -49,7 +48,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
 
     lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1)
     lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1)
-    with torch.autocast("cuda", dtype=torch.float16):
+    with torch.autocast("cuda", dtype=torch.bfloat16):
         with torch.inference_mode():
             lsr_logits = llm_model(
                 input_ids=lsr_input_ids[:, :-1],
@@ -139,7 +138,7 @@ def forward(batch, question):
     )
     return samples
 
-def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
+def train(num_epochs=5000, lr=1e-4, batch_size=4, train_size=5000, val_size=1000):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
@@ -149,20 +148,8 @@ def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
     val_ds = load_dataset(ds_name, split="test", streaming=True)
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
-    torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(num_epochs):
-        #Compute val loss
-        val_loss_epoch = 0
-        for i, batch in enumerate(val_dataloader):
-            if i >= (val_size // batch_size): 
-                continue
-            with torch.no_grad():
-                samples = forward(batch, question)
-                val_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: val").item()
-                val_loss_epoch += val_loss
-                torch.cuda.empty_cache()
-        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         #Compute train loss
         train_loss_epoch = 0
         for i, batch in enumerate(train_dataloader):
@@ -177,6 +164,19 @@ def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
             train_loss_epoch += train_loss.item()
             torch.cuda.empty_cache()
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
+        torch.cuda.empty_cache()
+        #Compute val loss
+        val_loss_epoch = 0
+        for i, batch in enumerate(val_dataloader):
+            if i >= (val_size // batch_size):
+                continue
+            with torch.no_grad():
+                samples = forward(batch, question)
+                val_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: val").item()
+                val_loss_epoch += val_loss
+            torch.cuda.empty_cache()
+        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
+        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',

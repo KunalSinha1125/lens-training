@@ -145,6 +145,12 @@ def create_prompt_sample(
         prompt += question
         prompt += "\nShort Answer:"
 
+    elif mode == "tags_only_test":
+        tags = samples[tags_col][idx]
+        loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        prompt += "Describe the image based on the information in the image tags."
+        prompt += f" Tags: {loop_tags}. Short Answer: "
+    
     elif mode == "tags_only_loop":
         tags = samples[tags_col][idx]
         loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
