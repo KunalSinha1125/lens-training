@@ -19,7 +19,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
 lens_model = Lens()
 processor = LensProcessor()
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.bfloat16).to(device)
+llm_model = GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.float16).to(device)
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2-xl")
 #perplexity = load("perplexity", module_type="metric")
 IGNORE_INDEX = -100
@@ -38,23 +38,24 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
     prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True)
     label_tokens = tokenizer(labels, return_tensors="pt", padding=True)
-    reader_tok, reader_mask = prompt_tokens.input_ids.to(device), prompt_tokens.attention_mask.to(device)
-    answer_tok, answer_mask = label_tokens.input_ids.to(device), label_tokens.attention_mask.to(device)
+    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
+    answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
 
     repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=1).view(-1, answer_tok.shape[-1])
     repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], k, dim=1).view(-1, answer_mask.shape[-1])
     reader_tok = reader_tok.reshape(-1, reader_tok.shape[-1])
     reader_mask = reader_mask.reshape(-1, reader_mask.shape[-1])
 
-    lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1)
-    lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1)
-    with torch.autocast("cuda", dtype=torch.bfloat16):
+    lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
+    lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
+    with torch.autocast("cuda", dtype=torch.float16):
         with torch.inference_mode():
             lsr_logits = llm_model(
                 input_ids=lsr_input_ids[:, :-1],
                 attention_mask=lsr_attention_mask[:, :-1],
                 use_cache=False,
             ).logits
+    torch.cuda.empty_cache()
 
     # compute perplexity of question
     continuation_length = repeat_answer_tok.shape[-1]
@@ -71,6 +72,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
     lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
+    torch.cuda.empty_cache()
     return lm_likelihood, lm_perplexity
 
 def compute_llm_likelihood_hf(samples, labels, gamma=1.0, desc="tags"):
@@ -99,11 +101,6 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     with torch.no_grad():
         llm_likelihood, llm_perplexity = compute_llm_likelihood(samples, labels)
     if table_name:
-        #table_data = {
-        #    "Prompts": [prompt + labels[i] for i, prompt in enumerate(samples["prompts"])],
-        #}
-        #table = wandb.Table(data=pd.DataFrame(table_data))
-        #wandb.log({table_name: table})
         table_data = {
             "Tags likelihood": tags_likelihood[0],
             "Tags scores": tags_scores[0],
@@ -114,14 +111,9 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         for k, v in table_data.items():
             table_data[k] = v.detach().to(dtype=torch.float16).cpu().numpy()[indices]
         table_data[desc] = np.array(samples[desc][0])[indices]
-        #table_data["Prompt"] = np.array(samples["prompts"][0])
         table_data["Caption"] = np.array(labels[0])
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
-        #plot = wandb.plot.scatter(
-        #    table, "LM perplexity", "Tags scores", title=f"{table_name} Likelihoods"
-        #)
-        #wandb.log({f"{table_name} graph": plot})
     kl_penalty = F.kl_div(
         tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
@@ -138,7 +130,7 @@ def forward(batch, question):
     )
     return samples
 
-def train(num_epochs=5000, lr=1e-4, batch_size=4, train_size=5000, val_size=1000):
+def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=5000, val_size=1000, accumulation_steps=64):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
@@ -155,16 +147,17 @@ def train(num_epochs=5000, lr=1e-4, batch_size=4, train_size=5000, val_size=1000
         for i, batch in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            optimizer.zero_grad()
             samples = forward(batch, question)
             train_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: train")
             train_loss.backward()
-            optimizer.step()
-            torch.save(lens_model.state_dict(), save_path)
+            wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
+            if (i + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
             torch.cuda.empty_cache()
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
-        torch.cuda.empty_cache()
+        torch.save(lens_model.state_dict(), save_path)
         #Compute val loss
         val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
@@ -173,10 +166,10 @@ def train(num_epochs=5000, lr=1e-4, batch_size=4, train_size=5000, val_size=1000
             with torch.no_grad():
                 samples = forward(batch, question)
                 val_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: val").item()
+                wandb.log({"Val loss": val_loss})
                 val_loss_epoch += val_loss
             torch.cuda.empty_cache()
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
-        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
