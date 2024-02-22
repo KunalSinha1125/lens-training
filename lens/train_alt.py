@@ -14,14 +14,17 @@ import matplotlib.pyplot
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import pandas as pd
 from evaluate import load
+import torch.autograd.profiler as profiler
+import torch.nn as nn
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
-lens_model = Lens()
+lens_model = Lens(device="cpu")
 processor = LensProcessor()
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.float16).to(device)
+llm_model = nn.DataParallel(GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.float16).to(device))
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2-xl")
 #perplexity = load("perplexity", module_type="metric")
+prof = profiler.profile()
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
@@ -55,12 +58,11 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
                 attention_mask=lsr_attention_mask[:, :-1],
                 use_cache=False,
             ).logits
-    torch.cuda.empty_cache()
 
     # compute perplexity of question
     continuation_length = repeat_answer_tok.shape[-1]
     lsr_logits = lsr_logits[:, -continuation_length:]
-    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX)
+    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
     token_loss = F.cross_entropy(
         lsr_logits.reshape(-1, lsr_logits.shape[-1]),
         lsr_labels.view(-1),
@@ -72,7 +74,6 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
     lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
-    torch.cuda.empty_cache()
     return lm_likelihood, lm_perplexity
 
 def compute_llm_likelihood_hf(samples, labels, gamma=1.0, desc="tags"):
@@ -117,7 +118,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     kl_penalty = F.kl_div(
         tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
-        )
+    )
     return kl_penalty
 
 def forward(batch, question):
@@ -130,7 +131,7 @@ def forward(batch, question):
     )
     return samples
 
-def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=5000, val_size=1000, accumulation_steps=64):
+def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
@@ -152,9 +153,9 @@ def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=5000, val_size=1000
             train_loss.backward()
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
-            if (i + 1) % accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
+            optimizer.step()
+            optimizer.zero_grad()
+            print(f"Finished batch {i}")
             torch.cuda.empty_cache()
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         torch.save(lens_model.state_dict(), save_path)
