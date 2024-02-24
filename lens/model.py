@@ -69,7 +69,6 @@ class Lens(nn.Module):
                 str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
                 map_location=self.device,
             ).float()
-            self.tags_weights.requires_grad_()
             # Load Vocabularies
             self.vocab_tags = load_dataset(vocab_tags, split=split_tags)[
                 "prompt_descriptions"
@@ -181,12 +180,10 @@ class Lens(nn.Module):
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
+        text_features = self.clip_model.encode_text(self.vocab_tags).to(self.device)
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        text_scores = (image_features_norm @ self.tags_weights).float().cpu()
-        top_scores, top_indexes = text_scores.topk(
-            k=num_tags if num_tags else len(text_scores.squeeze()), dim=-1
-        )
-        import pdb; pdb.set_trace()
+        text_scores = (image_features_norm @ self.tags_weights).float()
+        top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)
         for scores, indexes in zip(top_scores, top_indexes):
             #filter_indexes = indexes[scores >= contrastive_th]
             #if len(filter_indexes) > 0:
