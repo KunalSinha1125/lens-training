@@ -65,14 +65,14 @@ class Lens(nn.Module):
                 ),
                 map_location=self.device,
             ).float()
-            self.tags_weights = torch.load(
-                str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
-                map_location=self.device,
-            ).float()
+            # self.tags_weights = torch.load(
+            #     str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+            #     map_location=self.device,
+            # ).float()
             # Load Vocabularies
-            self.vocab_tags = load_dataset(vocab_tags, split=split_tags)[
-                "prompt_descriptions"
-            ]
+            self.vocab_tags = load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"]
+            clip_tokenizer = open_clip.get_tokenizer(clip_name)
+            self.tags_tokens = clip_tokenizer(self.vocab_tags).to(device)
             self.vocab_attributes = flatten(
                 load_dataset(vocab_attributes, split=split_attributes)[
                     "prompt_descriptions"
@@ -180,9 +180,9 @@ class Lens(nn.Module):
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
-        text_features = self.clip_model.encode_text(self.vocab_tags).to(self.device)
+        text_features = self.clip_model.encode_text(self.tags_tokens).to(self.device)
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        text_scores = (image_features_norm @ self.tags_weights).float()
+        text_scores = (image_features_norm @ text_features.T).float()
         top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)
         for scores, indexes in zip(top_scores, top_indexes):
             #filter_indexes = indexes[scores >= contrastive_th]
