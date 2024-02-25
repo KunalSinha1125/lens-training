@@ -119,7 +119,7 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 30,
+        num_tags: int = 200,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -186,7 +186,6 @@ class Lens(nn.Module):
         top_scores, top_indexes = text_scores.topk(
             k=num_tags if num_tags else len(text_scores.squeeze()), dim=-1
         )
-        import pdb; pdb.set_trace()
         for scores, indexes in zip(top_scores, top_indexes):
             #filter_indexes = indexes[scores >= contrastive_th]
             #if len(filter_indexes) > 0:
