@@ -13,13 +13,15 @@ from transformers import (
     CLIPModel,
     CLIPProcessor
 )
-
 from utils import (
     create_dataloader,
     create_prompt_sample,
     create_sampler,
     default_device,
 )
+import numpy as np
+import random
+random.seed(1)
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
@@ -36,6 +38,7 @@ class Lens(nn.Module):
         vocab_tags: str = "llm-lens/vocab_tags",
         split_attributes: str = "full",
         split_tags: str = "train",
+        num_total_tags: int = 10,
         load_8bit: bool = False,
         device: torch.device = default_device,
     ):
@@ -65,14 +68,18 @@ class Lens(nn.Module):
                 ),
                 map_location=self.device,
             ).float()
-            # self.tags_weights = torch.load(
-            #     str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
-            #     map_location=self.device,
-            # ).float()
+            self.tags_weights = torch.load(
+                str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+                map_location=self.device,
+            ).float()
             # Load Vocabularies
-            self.vocab_tags = load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"]
-            clip_tokenizer = open_clip.get_tokenizer(clip_name)
-            self.tags_tokens = clip_tokenizer(self.vocab_tags).to(device)
+            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"])
+            tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
+            self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
+            self.vocab_tags = self.vocab_tags[tags_indices]
+            self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
+            #token_len = self.tags_tokens.argmin(dim=-1).max().item()
+            #self.tags_tokens = self.tags_tokens[:, :token_len].reshape((-1, token_len * 5))
             self.vocab_attributes = flatten(
                 load_dataset(vocab_attributes, split=split_attributes)[
                     "prompt_descriptions"
@@ -118,7 +125,7 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 200,
+        num_tags: int = 10,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -180,9 +187,15 @@ class Lens(nn.Module):
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
-        text_features = self.clip_model.encode_text(self.tags_tokens).to(self.device)
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        text_scores = (image_features_norm @ text_features.T).float()
+        text_features_list = []
+        for i in range(self.tags_tokens.shape[0]):
+            text = self.clip_model.encode_text(self.tags_tokens[i].unsqueeze(0)).squeeze()
+            text_features_list.append(text)
+        text_features = torch.stack(text_features_list, dim=0)
+        text_features_norm = text_features / text_features.norm(dim=-1, keepdim=True)
+        text_scores = (image_features_norm @ text_features_norm.t()).float()
+        #text_scores = (image_features_norm @ self.tags_weights).float()
         top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)
         for scores, indexes in zip(top_scores, top_indexes):
             #filter_indexes = indexes[scores >= contrastive_th]
