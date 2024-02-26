@@ -49,6 +49,7 @@ class Lens(nn.Module):
         self.blip_name = blip_name
         if self.clip_name is not None:
             self.clip_model = self.load_clip_model(self.clip_name, self.device)
+            self.clip_model.gradient_checkpointing_enable()
             # Load weights
             huggingface_hub.hf_hub_download(
                 repo_id="llm-lens/attributes",
