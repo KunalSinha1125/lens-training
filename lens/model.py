@@ -38,7 +38,7 @@ class Lens(nn.Module):
         vocab_tags: str = "llm-lens/vocab_tags",
         split_attributes: str = "full",
         split_tags: str = "train",
-        num_total_tags: int = 10,
+        num_total_tags: int = 1000,
         load_8bit: bool = False,
         device: torch.device = default_device,
     ):
@@ -49,7 +49,7 @@ class Lens(nn.Module):
         self.blip_name = blip_name
         if self.clip_name is not None:
             self.clip_model = self.load_clip_model(self.clip_name, self.device)
-            self.clip_model.gradient_checkpointing_enable()
+            self.clip_model.set_grad_checkpointing()
             # Load weights
             huggingface_hub.hf_hub_download(
                 repo_id="llm-lens/attributes",
@@ -80,7 +80,8 @@ class Lens(nn.Module):
             self.vocab_tags = self.vocab_tags[tags_indices]
             self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
             #token_len = self.tags_tokens.argmin(dim=-1).max().item()
-            #self.tags_tokens = self.tags_tokens[:, :token_len].reshape((-1, token_len * 5))
+            #self.tags_tokens = self.tags_tokens[:, :token_len]
+            #self.clip_model.context_length = token_len
             self.vocab_attributes = flatten(
                 load_dataset(vocab_attributes, split=split_attributes)[
                     "prompt_descriptions"
@@ -126,7 +127,7 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 10,
+        num_tags: int = 100,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -189,11 +190,12 @@ class Lens(nn.Module):
                 pixel_values=samples["clip_image"]
             )
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        text_features_list = []
-        for i in range(self.tags_tokens.shape[0]):
-            text = self.clip_model.encode_text(self.tags_tokens[i].unsqueeze(0)).squeeze()
-            text_features_list.append(text)
-        text_features = torch.stack(text_features_list, dim=0)
+        #text_features_list = []
+        #for i in range(self.tags_tokens.shape[0]):
+            #text = self.clip_model.encode_text(self.tags_tokens[i].unsqueeze(0)).squeeze()
+            #text_features_list.append(text)
+        #text_features = torch.stack(text_features_list, dim=0)
+        text_features = self.clip_model.encode_text(self.tags_tokens)
         text_features_norm = text_features / text_features.norm(dim=-1, keepdim=True)
         text_scores = (image_features_norm @ text_features_norm.t()).float()
         #text_scores = (image_features_norm @ self.tags_weights).float()

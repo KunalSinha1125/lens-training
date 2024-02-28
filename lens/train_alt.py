@@ -2,7 +2,7 @@ from model import Lens, LensDataset, LensProcessor
 import requests
 from PIL import Image
 from scipy.special import rel_entr
-from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, GPT2LMHeadModel, GPT2TokenizerFast#AutoModelForCausalLM, AutoTokenizer
+from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoModelForCausalLM, AutoTokenizer
 import torch
 import numpy as np
 from utils import create_prompt_sample, create_dataloader, create_sampler
@@ -23,14 +23,14 @@ print(torch.cuda.mem_get_info()[0] / 1e9)
 lens_model = Lens()
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
-llm_model = GPT2LMHeadModel.from_pretrained("gpt2-xl", torch_dtype=torch.float16).to(device)
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2-xl")
+llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
+tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 print(torch.cuda.mem_get_info()[0] / 1e9)
 #perplexity = load("perplexity", module_type="metric")
 prof = profiler.profile()
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=0.1, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=0.01, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     num_inputs = bsz * k
     inputs, all_labels = [], [] 
@@ -67,7 +67,7 @@ def compute_llm_likelihood(samples, labels, gamma=0.1, desc="tags"):
 
     #lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
     #lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
-    with torch.autocast("cuda", dtype=torch.float16):
+    with torch.autocast("cuda"):
         with torch.no_grad():
             lsr_logits = llm_model(
                 input_ids=lsr_input_ids[:, :-1],
@@ -88,10 +88,7 @@ def compute_llm_likelihood(samples, labels, gamma=0.1, desc="tags"):
     for i in range(num_inputs):
         end = lsr_end_indices[i] - 1
         start = end - label_len
-        try:
-            label_logits[i] = lsr_logits[i, start:end, :]
-        except:
-            import pdb; pdb.set_trace()
+        label_logits[i] = lsr_logits[i, start:end, :]
     token_loss = F.cross_entropy(
         #lsr_logits.reshape(-1, lsr_logits.shape[-1]),
         label_logits.reshape(-1, vocab_size),
@@ -122,7 +119,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1.0, desc="tags"):
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity
 
-def compute_tags_likelihood(samples, gamma=0.1, desc="tags"):
+def compute_tags_likelihood(samples, gamma=0.01, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
