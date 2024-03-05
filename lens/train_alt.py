@@ -16,18 +16,18 @@ import pandas as pd
 from evaluate import load
 import torch.autograd.profiler as profiler
 import torch.nn as nn
+from accelerate import Accelerator
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
 print(torch.cuda.mem_get_info()[0] / 1e9)
+accelerator = Accelerator()
 lens_model = Lens()
+print(torch.cuda.mem_get_info()[0] / 1e9)
+llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
-llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
-print(torch.cuda.mem_get_info()[0] / 1e9)
-#perplexity = load("perplexity", module_type="metric")
-prof = profiler.profile()
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=0.01, desc="tags"):
@@ -152,7 +152,8 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     )
     return kl_penalty
 
-def forward(batch, question):
+def forward(lens_model, batch, question):
+    print("Entering forward pass")
     inputs = processor(batch['image'], question)
     print(torch.cuda.mem_get_info()[0] / 1e9)
     samples = lens_model(
@@ -161,18 +162,27 @@ def forward(batch, question):
         return_attributes=False,
         return_intensive_captions=False
     )
+    print("Completed forward pass")
     return samples
 
-def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=200, val_size=200):
-    wandb.init(project="lens-training-coco-dataset")
+def main(num_epochs=5000, lr=1e-4, batch_size=4, train_size=4, val_size=4):
+    print("After initializing LENSProcessor")
+    #wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
     ds_name = "cifar10"
     train_ds = load_dataset(ds_name, split="train", streaming=True)
     train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
+    print("Created train loader")
     val_ds = load_dataset(ds_name, split="test", streaming=True)
     val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
-    optimizer = torch.optim.Adam(lens_model.parameters(), lr=lr)
+    print("Created val loader")
+    optimizer = torch.optim.Adam(lens_model.clip_model.parameters(), lr=lr)
+    print("Before prepare")
+    lens_model.clip_model, optimizer, train_dataloader, val_dataloader = accelerator.prepare(
+        lens_model.clip_model, optimizer, train_dataloader, val_dataloader
+    )
+    print("After prepare")
 
     for epoch in range(num_epochs):
         #Compute train loss
@@ -180,9 +190,10 @@ def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=200, val_size=200):
         for i, batch in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            samples = forward(batch, question)
+            samples = forward(lens_model, batch, question)
             train_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: train")
-            train_loss.backward()
+            #train_loss.backward()
+            accelator.backward(train_loss)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
             optimizer.step()
@@ -207,4 +218,4 @@ def train(num_epochs=5000, lr=1e-4, batch_size=1, train_size=200, val_size=200):
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
-    train()
+    main()
