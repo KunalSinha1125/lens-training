@@ -172,17 +172,16 @@ def main(num_epochs=5000, lr=1e-4, batch_size=2, train_size=2, val_size=2):
     question = ["What is this image about?" for i in range(batch_size)]
     ds_name = "cifar10"
     train_ds_raw = load_dataset(ds_name, split="train", streaming=True)
-    #train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
     train_ds = LensDataset(train_ds_raw, processor)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size)
     print("Created train loader")
     val_ds_raw = load_dataset(ds_name, split="test", streaming=True)
-    #val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
     val_ds = LensDataset(val_ds_raw, processor)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
+    import pdb; pdb.set_trace()
     lens.clip_model, optimizer, train_dataloader = accelerator.prepare(
         lens.clip_model, optimizer, train_dataloader
     )
