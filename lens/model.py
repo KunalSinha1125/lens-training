@@ -6,13 +6,14 @@ import huggingface_hub
 import open_clip
 import torch
 import torch.nn as nn
-from datasets import Dataset, load_dataset
+from datasets import Dataset, IterableDataset, load_dataset
 from transformers import (
     AutoProcessor,
     BlipForConditionalGeneration,
     CLIPModel,
     CLIPProcessor
 )
+from accelerate import Accelerator
 from utils import (
     create_dataloader,
     create_prompt_sample,
@@ -38,61 +39,69 @@ class Lens(nn.Module):
         vocab_tags: str = "llm-lens/vocab_tags",
         split_attributes: str = "full",
         split_tags: str = "train",
-        num_total_tags: int = 1000,
+        #num_total_tags: int = 2000,
         load_8bit: bool = False,
         device: torch.device = default_device,
     ):
         super().__init__()
         # Load Base models
+        accelerator = Accelerator()
         self.device = device
         self.clip_name = clip_name
-        self.blip_name = blip_name
+        #self.blip_name = blip_name
         if self.clip_name is not None:
+            print("Before CLIP model")
             self.clip_model = self.load_clip_model(self.clip_name, self.device)
-            self.clip_model.set_grad_checkpointing()
+            print("After CLIP model")
             # Load weights
-            huggingface_hub.hf_hub_download(
-                repo_id="llm-lens/attributes",
-                filename=attributes_weights,
-                local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
-            )
+            #huggingface_hub.hf_hub_download(
+            #    repo_id="llm-lens/attributes",
+            #    filename=attributes_weights,
+            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
+            #)
+            print("Before tags download")
             huggingface_hub.hf_hub_download(
                 repo_id="llm-lens/tags",
                 filename=tags_weights,
                 local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
             )
+            print("After tags download")
 
-            self.attributes_weights = torch.load(
-                str(
-                    Path(Path(__file__).resolve().parent)
-                    / f"weights/{attributes_weights}"
-                ),
-                map_location=self.device,
-            ).float()
-            self.tags_weights = torch.load(
-                str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
-                map_location=self.device,
-            ).float()
+            #self.attributes_weights = torch.load(
+            #    str(
+            #        Path(Path(__file__).resolve().parent)
+            #        / f"weights/{attributes_weights}"
+            #    ),
+            #    map_location=self.device,
+            #).float()
+            #self.tags_weights = torch.load(
+            #    str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+            #    map_location=self.device,
+            #).float()
             # Load Vocabularies
+            print("Before vocab tags")
             self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"])
-            tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
-            self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
-            self.vocab_tags = self.vocab_tags[tags_indices]
+            print("After vocab tags")
+            #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
+            #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
+            #self.vocab_tags = self.vocab_tags[tags_indices]
+            print("Before tags tokens")
             self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
+            print("After tags tokens")
             #token_len = self.tags_tokens.argmin(dim=-1).max().item()
             #self.tags_tokens = self.tags_tokens[:, :token_len]
             #self.clip_model.context_length = token_len
-            self.vocab_attributes = flatten(
-                load_dataset(vocab_attributes, split=split_attributes)[
-                    "prompt_descriptions"
-                ]
-            )
+            #self.vocab_attributes = flatten(
+            #    load_dataset(vocab_attributes, split=split_attributes)[
+            #        "prompt_descriptions"
+            #    ]
+            #)
 
-        if self.blip_name is not None:
-            self.blip_model = self.load_caption_model(
-                self.blip_name, load_8bit, self.device
-            )
-            self.blip_processor = AutoProcessor.from_pretrained(self.blip_name)
+        #if self.blip_name is not None:
+            #self.blip_model = self.load_caption_model(
+            #    self.blip_name, load_8bit, self.device
+            #)
+            #self.blip_processor = AutoProcessor.from_pretrained(self.blip_name)
 
     def load_caption_model(
         self, model_name: str, load_8bit: bool, device: torch.device
@@ -119,15 +128,19 @@ class Lens(nn.Module):
     def load_clip_model(self, model_name: str, device: torch.device):
         if "openai" in model_name:
             model = CLIPModel.from_pretrained(model_name).to(device)
-
         elif "laion" in model_name:
+            print("Before create model and transform")
+            print(f"Memory left: {torch.cuda.mem_get_info()[0] / 1e9}")
             model = open_clip.create_model_and_transforms(model_name)[0].to(device)
+            print(f"Memory left: {torch.cuda.mem_get_info()[0] / 1e9}")
+            print("After create model and transform")
+        model.set_grad_checkpointing()
         return model
 
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 100,
+        num_tags: int = 50,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -146,10 +159,10 @@ class Lens(nn.Module):
             samples = self.forward_tags(
                 samples, num_tags=num_tags, contrastive_th=contrastive_th
             )
-        if return_attributes:
-            samples = self.forward_attributes(
-                samples, num_attributes=num_attributes, contrastive_th=contrastive_th
-            )
+        #if return_attributes:
+        #    samples = self.forward_attributes(
+        #        samples, num_attributes=num_attributes, contrastive_th=contrastive_th
+        #    )
         # if return_global_caption:
         #     samples = self.forward_caption(
         #         samples,
@@ -157,38 +170,39 @@ class Lens(nn.Module):
         #         max_length=max_length,
         #         min_length=min_length,
         #     )
-        if return_intensive_captions:
-            samples = self.forward_intensive_caption(
-                samples,
-                max_length=max_length,
-                min_length=min_length,
-                top_k=top_k,
-                num_captions=num_captions,
-            )
+        #if return_intensive_captions:
+        #    samples = self.forward_intensive_caption(
+        #        samples,
+        #        max_length=max_length,
+        #        min_length=min_length,
+        #        top_k=top_k,
+        #        num_captions=num_captions,
+        #    )
 
         if return_prompt:
-            mode = "all"
-            if return_tags and not return_attributes:
-                mode = "tags_only"
-            elif return_attributes and not return_tags:
-                mode = "attributes_only"
+            mode = "tags_only"
+            #if return_tags and not return_attributes:
+                #mode = "tags_only"
+            #elif return_attributes and not return_tags:
+            #    mode = "attributes_only"
             samples = self.create_prompt_from_samples(samples, mode=mode)
 
         return samples
 
     def forward_tags(
-        self, samples: dict, num_tags: int = 100, contrastive_th: float = 0.2
+        self, images, num_tags: int = 100, contrastive_th: float = 0.2
     ):
         # Get Image Features
+        samples = {}
         tags = []
         try:
-            image_features = self.clip_model.encode_image(
-                samples["clip_image"].to(self.device)
-            )
+            import pdb; pdb.set_trace()
+            image_features = self.clip_model.encode_image(images.to(dtype=torch.bfloat16))
         except:
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
+        print("Before encoding text features")
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
         #text_features_list = []
         #for i in range(self.tags_tokens.shape[0]):
@@ -197,7 +211,9 @@ class Lens(nn.Module):
         #text_features = torch.stack(text_features_list, dim=0)
         text_features = self.clip_model.encode_text(self.tags_tokens)
         text_features_norm = text_features / text_features.norm(dim=-1, keepdim=True)
+        print("After encoding text features")
         text_scores = (image_features_norm @ text_features_norm.t()).float()
+        print("After computing text scores")
         #text_scores = (image_features_norm @ self.tags_weights).float()
         top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)
         for scores, indexes in zip(top_scores, top_indexes):
@@ -427,8 +443,10 @@ class LensProcessor:
         clip_name: str = "hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
         blip_name: str = "Salesforce/blip-image-captioning-large",
     ):
+        print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)
-        self.blip_processor = AutoProcessor.from_pretrained(blip_name)
+        print("After CLIP processor")
+        #self.blip_processor = AutoProcessor.from_pretrained(blip_name)
 
     def load_clip_transform(self, model_name: str):
         if "openai" in model_name:
@@ -437,54 +455,62 @@ class LensProcessor:
         elif "laion" in model_name:
             return open_clip.create_model_and_transforms(model_name)[2]
 
-    def __call__(self, images: Any, questions: str):
+    def __call__(self, images: Any):#, questions: str):
         try:
             clip_image = torch.stack([self.clip_processor(image) for image in images])
         except:
             clip_image = self.clip_processor(images=images, return_tensors="pt")["pixel_values"]
-        outputs = self.blip_processor(
-            images=images, text=["a picture of"] * len(images), return_tensors="pt"
-        )
-        blip_image = outputs["pixel_values"]
-        blip_input_ids = outputs["input_ids"]
-        return {
-            "clip_image": clip_image,
-            "blip_image": blip_image,
-            "blip_input_ids": blip_input_ids,
-            "questions": questions,
-        }
+        #outputs = self.blip_processor(
+        #    images=images, text=["a picture of"] * len(images), return_tensors="pt"
+        #)
+        #blip_image = outputs["pixel_values"]
+        #blip_input_ids = outputs["input_ids"]
+        return clip_image
+        #return {
+            #"clip_image": clip_image,
+            #"blip_image": blip_image,
+            #"blip_input_ids": blip_input_ids,
+            #"questions": questions,
+        #}
 
 
-class LensDataset:
+class LensDataset(IterableDataset):
     def __init__(
         self,
         ds: Dataset,
-        questions: Optional[List[str]] = None,
         processor: Optional[LensProcessor] = None,
     ):
         self.ds = ds
         self.processor = processor
-        self.questions = questions
+        self.classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
-    def __getitem__(self, idx):
-        image = self.ds[idx]["image"]
-        id = self.ds[idx]["id"]
-        try:
-            question = self.ds[idx]["question"]
-        except:
-            pass
-        try:
-            question = self.questions[idx]
-        except:
-            question = ""
-        outputs = self.processor([image], question)
-        return {
-            "id": torch.tensor(id, dtype=torch.int32),
-            "clip_image": outputs["clip_image"].squeeze(0),
-            "blip_image": outputs["blip_image"].squeeze(0),
-            "blip_input_ids": outputs["blip_input_ids"].squeeze(0),
-            "questions": outputs["questions"],
-        }
-
-    def __len__(self):
-        return len(self.ds)
+    def __iter__(self):
+        for elem in self.ds:
+            clip_image = self.processor([elem["img"]])
+            label = self.classes[int(elem["label"])]
+            yield clip_image.squeeze()
+            
+    #def __getitem__(self, idx):
+        #image = self.ds[idx]["image"]
+        #id = self.ds[idx]["id"]
+        #try:
+        #    question = self.ds[idx]["question"]
+        #except:
+        #    pass
+        #try:
+        #    question = self.questions[idx]
+        #except:
+        #    question = ""
+        #current = next(iter(self.ds))
+        #image = current['img']
+        #clip_image = self.processor([image])
+        #classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+        #label = classes[int(current['label'])]
+        #return clip_image, label
+        #return {
+        #    "id": torch.tensor(id, dtype=torch.int32),
+        #    "clip_image": outputs["clip_image"].squeeze(0),
+        #    "blip_image": outputs["blip_image"].squeeze(0),
+        #    "blip_input_ids": outputs["blip_input_ids"].squeeze(0),
+        #    "questions": outputs["questions"],
+        #}

@@ -149,7 +149,7 @@ def create_prompt_sample(
         tags = samples[tags_col][idx]
         #loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
         prompt += "Describe the image based on the image tag."
-        prompt += "\nTag: canine. Answer: dog"
+        #prompt += "\nTag: canine. Answer: dog"
         #prompt += "\nTag: cedar. Answer: tree"
         #prompt += "\nTag: driving. Answer: car"
         prompt += f"\nTag: {tags[desc_idx]}. Answer: "

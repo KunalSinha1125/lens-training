@@ -22,12 +22,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
 print(torch.cuda.mem_get_info()[0] / 1e9)
 accelerator = Accelerator()
-lens_model = Lens()
 print(torch.cuda.mem_get_info()[0] / 1e9)
-llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+lens = Lens()
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
+#llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
+#tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=0.01, desc="tags"):
@@ -104,19 +104,21 @@ def compute_llm_likelihood(samples, labels, gamma=0.01, desc="tags"):
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
-def compute_llm_likelihood_hf(samples, labels, gamma=1.0, desc="tags"):
+def compute_llm_likelihood_hf(samples, labels, gamma=0.01, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     prompts = []
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_loop",
+                samples, i, desc_idx=j, mode=f"{desc}_only_test",
                 question_prompt=samples["questions"][i]
             )
             prompts.append(f"{prompt} {labels[i]}")
-    results = perplexity.compute(predictions=prompts, model_id='gpt2', add_start_token=False, device="cuda")
+    print(torch.cuda.mem_get_info()[0] / 1e9)
+    results = perplexity.compute(predictions=prompts, model_id='microsoft/phi-2', add_start_token=False, device="cuda")
     lm_perplexity = torch.tensor(results['perplexities']).reshape((bsz, k)).to(device) # see above
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
+    print(torch.cuda.mem_get_info()[0] / 1e9)
     return lm_likelihood, lm_perplexity
 
 def compute_tags_likelihood(samples, gamma=0.01, desc="tags"):
@@ -128,7 +130,7 @@ def compute_tags_likelihood(samples, gamma=0.01, desc="tags"):
 def compute_loss(samples, labels, table_name=None, desc="tags"):
     tags_likelihood, tags_scores = compute_tags_likelihood(samples)
     with torch.no_grad():
-        llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood(samples, labels)
+        llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood_hf(samples, labels)
     if table_name:
         table_data = {
             "Tags likelihood": tags_likelihood[0],
@@ -152,68 +154,73 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     )
     return kl_penalty
 
-def forward(lens_model, batch, question):
+def forward(images):
     print("Entering forward pass")
-    inputs = processor(batch['image'], question)
-    print(torch.cuda.mem_get_info()[0] / 1e9)
-    samples = lens_model(
-        inputs,
+    samples = lens(
+        images,
         return_tags=True,
         return_attributes=False,
         return_intensive_captions=False
     )
+    print(torch.cuda.mem_get_info()[0] / 1e9)
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-4, batch_size=4, train_size=4, val_size=4):
-    print("After initializing LENSProcessor")
+def main(num_epochs=5000, lr=1e-4, batch_size=2, train_size=2, val_size=2):
     #wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
     ds_name = "cifar10"
-    train_ds = load_dataset(ds_name, split="train", streaming=True)
-    train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
+    train_ds_raw = load_dataset(ds_name, split="train", streaming=True)
+    #train_dataloader = create_dataloader(train_ds, batch_size=batch_size)
+    train_ds = LensDataset(train_ds_raw, processor)
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size)
     print("Created train loader")
-    val_ds = load_dataset(ds_name, split="test", streaming=True)
-    val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
+    val_ds_raw = load_dataset(ds_name, split="test", streaming=True)
+    #val_dataloader = create_dataloader(val_ds, batch_size=batch_size)
+    val_ds = LensDataset(val_ds_raw, processor)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size)
     print("Created val loader")
-    optimizer = torch.optim.Adam(lens_model.clip_model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
-    lens_model.clip_model, optimizer, train_dataloader, val_dataloader = accelerator.prepare(
-        lens_model.clip_model, optimizer, train_dataloader, val_dataloader
+    new_model, new_optimizer, new_dataloader = accelerator.prepare(
+        lens.clip_model, optimizer, train_dataloader
     )
+    import pdb; pdb.set_trace()
     print("After prepare")
 
     for epoch in range(num_epochs):
         #Compute train loss
         train_loss_epoch = 0
-        for i, batch in enumerate(train_dataloader):
+        for i, images in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            samples = forward(lens_model, batch, question)
-            train_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: train")
+            import pdb; pdb.set_trace()
+            samples = forward(images)
+            train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
             #train_loss.backward()
+            #wandb.log({"train_loss": train_loss.item()})
             accelator.backward(train_loss)
-            wandb.log({"train_loss": train_loss.item()})
+            accelerator.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
             optimizer.step()
             optimizer.zero_grad()
             print(f"Finished batch {i}")
             torch.cuda.empty_cache()
-        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
-        torch.save(lens_model.state_dict(), save_path)
+        accelerator.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         #Compute val loss
         val_loss_epoch = 0
         for i, batch in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
-                samples = forward(batch, question)
+                samples = forward(lens, processor, batch, question)
                 val_loss = compute_loss(samples, batch['caption'], f"Epoch {epoch}: val").item()
-                wandb.log({"val_loss": val_loss})
+                #wandb.log({"val_loss": val_loss})
+                accelerator.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
             torch.cuda.empty_cache()
-        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
+        accelerator.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
