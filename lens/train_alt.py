@@ -183,7 +183,7 @@ def main(num_epochs=5000, lr=1e-4, batch_size=2, train_size=2, val_size=2):
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
-    new_model, new_optimizer, new_dataloader = accelerator.prepare(
+    lens.clip_model, optimizer, train_dataloader = accelerator.prepare(
         lens.clip_model, optimizer, train_dataloader
     )
     import pdb; pdb.set_trace()
