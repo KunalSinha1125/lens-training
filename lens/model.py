@@ -39,7 +39,7 @@ class Lens(nn.Module):
         vocab_tags: str = "llm-lens/vocab_tags",
         split_attributes: str = "full",
         split_tags: str = "train",
-        #num_total_tags: int = 2000,
+        num_total_tags: int = 5000,
         load_8bit: bool = False,
         device: torch.device = default_device,
     ):
@@ -59,13 +59,13 @@ class Lens(nn.Module):
             #    filename=attributes_weights,
             #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
             #)
-            print("Before tags download")
-            huggingface_hub.hf_hub_download(
-                repo_id="llm-lens/tags",
-                filename=tags_weights,
-                local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
-            )
-            print("After tags download")
+            #print("Before tags download")
+            #huggingface_hub.hf_hub_download(
+            #    repo_id="llm-lens/tags",
+            #    filename=tags_weights,
+            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
+            #)
+            #print("After tags download")
 
             #self.attributes_weights = torch.load(
             #    str(
@@ -82,9 +82,9 @@ class Lens(nn.Module):
             print("Before vocab tags")
             self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"])
             print("After vocab tags")
-            #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
+            tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
             #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
-            #self.vocab_tags = self.vocab_tags[tags_indices]
+            self.vocab_tags = self.vocab_tags[tags_indices]
             print("Before tags tokens")
             self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
             print("After tags tokens")
@@ -152,7 +152,7 @@ class Lens(nn.Module):
         return_attributes: bool = True,
         return_global_caption: bool = False,
         return_intensive_captions: bool = False,
-        return_prompt: bool = True,
+        return_prompt: bool = False,
     ):
 
         if return_tags:
@@ -196,26 +196,25 @@ class Lens(nn.Module):
         samples = {}
         tags = []
         try:
-            import pdb; pdb.set_trace()
-            image_features = self.clip_model.encode_image(images.to(dtype=torch.bfloat16))
+            image_features = self.clip_model.encode_image(images.to("cuda"))#.to(dtype=torch.bfloat16))
         except:
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
         print("Before encoding text features")
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        #text_features_list = []
-        #for i in range(self.tags_tokens.shape[0]):
-            #text = self.clip_model.encode_text(self.tags_tokens[i].unsqueeze(0)).squeeze()
-            #text_features_list.append(text)
-        #text_features = torch.stack(text_features_list, dim=0)
-        text_features = self.clip_model.encode_text(self.tags_tokens)
+        with torch.no_grad():
+            text_features = self.clip_model.encode_text(self.tags_tokens)
         text_features_norm = text_features / text_features.norm(dim=-1, keepdim=True)
         print("After encoding text features")
         text_scores = (image_features_norm @ text_features_norm.t()).float()
         print("After computing text scores")
         #text_scores = (image_features_norm @ self.tags_weights).float()
-        top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)
+        _, top_indexes = text_scores.topk(k=num_tags, dim=-1)
+        bsz, k = top_indexes.shape
+        chosen_text_features = self.clip_model.encode_text(self.tags_tokens[top_indexes].reshape((bsz*k, -1)))
+        chosen_text_features_norm = chosen_text_features / chosen_text_features.norm(dim=-1, keepdim=True)
+        top_scores = torch.matmul(chosen_text_features_norm.reshape((bsz, k, -1)), image_features.unsqueeze(-1)).float().squeeze()
         for scores, indexes in zip(top_scores, top_indexes):
             #filter_indexes = indexes[scores >= contrastive_th]
             #if len(filter_indexes) > 0:
@@ -335,7 +334,7 @@ class Lens(nn.Module):
         samples: dict,
         mode: str = "all",  # vqa or vision or hm or or all
     ):
-        num_samples = samples["clip_image"].shape[0]
+        num_samples = samples["top_scores_tags"].shape[-1]
         prompts = []
         for idx in range(num_samples):
             prompt = create_prompt_sample(samples, idx, mode=mode)
@@ -484,29 +483,20 @@ class LensDataset(IterableDataset):
         self.processor = processor
         self.classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 
-    def __iter__(self):
-        for elem in self.ds:
-            clip_image = self.processor([elem["img"]])
-            label = self.classes[int(elem["label"])]
-            yield clip_image.squeeze()
+    #def __iter__(self):
+    #    for elem in self.ds:
+    #        clip_image = self.processor([elem["img"]])
+    #        label = self.classes[int(elem["label"])]
+    #        yield clip_image.squeeze()
             
-    #def __getitem__(self, idx):
-        #image = self.ds[idx]["image"]
-        #id = self.ds[idx]["id"]
-        #try:
-        #    question = self.ds[idx]["question"]
-        #except:
-        #    pass
-        #try:
-        #    question = self.questions[idx]
-        #except:
-        #    question = ""
-        #current = next(iter(self.ds))
-        #image = current['img']
-        #clip_image = self.processor([image])
-        #classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
-        #label = classes[int(current['label'])]
-        #return clip_image, label
+    def __len__(self):
+        return len(self.ds) 
+
+    def __getitem__(self, idx):
+        image = self.ds[idx]["img"]
+        label = self.classes[int(self.ds[idx]["label"])]
+        clip_image = self.processor([image])
+        return clip_image.squeeze(), label
         #return {
         #    "id": torch.tensor(id, dtype=torch.int32),
         #    "clip_image": outputs["clip_image"].squeeze(0),

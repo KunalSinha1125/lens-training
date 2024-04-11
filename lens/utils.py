@@ -107,10 +107,10 @@ def create_prompt_sample(
     mode="all",
 ):
     prompt = ""
-    if question_prompt is not None:
-        question = question_prompt
-    else:
-        question = samples[question_col][idx]
+    #if question_prompt is not None:
+    #    question = question_prompt
+    #else:
+    #    question = samples[question_col][idx]
 
     if mode == "vqa":
         prompt += "Image:\n"
