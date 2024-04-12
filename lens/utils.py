@@ -132,11 +132,9 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only":
-        prompt += "Tag: "
-        prompt += ",".join(samples[tags_col][idx])
-        prompt += "\nQuestion:"
-        prompt += question
-        prompt += "\nShort Answer:"
+        tags = samples[tags_col][idx]
+        prompt += f"Instruct: you are given the image tags {tags}. Based on this information, output a word that describes the image. \nOutput:"
+        print(prompt)
 
     elif mode == "tags_only_single":
         prompt += "\nTag: "
@@ -148,11 +146,11 @@ def create_prompt_sample(
     elif mode == "tags_only_test":
         tags = samples[tags_col][idx]
         #loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
-        prompt += "Describe the image based on the image tag."
+        prompt += f"Instruct: you are given the image tags {tags}. Based on this information, output a word that describes the image. \nOutput:"
         #prompt += "\nTag: canine. Answer: dog"
         #prompt += "\nTag: cedar. Answer: tree"
         #prompt += "\nTag: driving. Answer: car"
-        prompt += f"\nTag: {tags[desc_idx]}. Answer: "
+        #prompt += f"\nTag: {tags[desc_idx]}. Answer: "
         #prompt += f"\nTags: {loop_tags}. Answer: "
     
     elif mode == "tags_only_loop":

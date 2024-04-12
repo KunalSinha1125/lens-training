@@ -161,13 +161,21 @@ def forward(images):
         images,
         return_tags=True,
         return_attributes=False,
-        return_intensive_captions=False
+        return_intensive_captions=False,
+        return_prompt=True
     )
     print(torch.cuda.mem_get_info()[0] / 1e9)
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-4, batch_size=8, train_size=1000, val_size=1000):
+def evaluate(samples, labels):
+    prompts = samples["prompts"]
+    import pdb; pdb.set_trace()
+    input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
+    outputs = llm_model.generate(input_ids)
+    preds = tokenizer.batch_decode(outputs)
+
+def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1000, val_size=1000):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
@@ -195,6 +203,7 @@ def main(num_epochs=5000, lr=1e-4, batch_size=8, train_size=1000, val_size=1000)
             if i >= (train_size // batch_size):
                 continue
             samples = forward(images)
+            evaluate(samples, labels)
             train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
             train_loss.backward()
             wandb.log({"train_loss": train_loss.item()})
