@@ -13,10 +13,10 @@ import wandb
 import matplotlib.pyplot
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import pandas as pd
-from evaluate import load
 import torch.autograd.profiler as profiler
 import torch.nn as nn
 from accelerate import Accelerator
+from evaluate import compute_class_acc
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
@@ -38,7 +38,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_test",
+                samples, i, desc_idx=j, mode=f"{desc}_only_single",
             )
             prompts.append(prompt)
             #inputs.append(f"{prompt} {labels[i]}")
@@ -102,11 +102,11 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     scores = token_loss.view(bsz, k, -1)
     #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
-def compute_llm_likelihood_hf(samples, labels, gamma=0.01, desc="tags"):
+def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     prompts = []
     for i in range(bsz):
@@ -123,7 +123,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=0.01, desc="tags"):
     print(torch.cuda.mem_get_info()[0] / 1e9)
     return lm_likelihood, lm_perplexity
 
-def compute_tags_likelihood(samples, gamma=0.01, desc="tags"):
+def compute_tags_likelihood(samples, gamma=5e-4, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
@@ -150,7 +150,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
     kl_penalty = F.kl_div(
-        tags_scores.log_softmax(dim=-1), llm_perplexity.log_softmax(dim=-1),
+        tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
     return kl_penalty
@@ -168,25 +168,18 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def evaluate(samples, labels):
-    prompts = samples["prompts"]
-    import pdb; pdb.set_trace()
-    input_ids = tokenizer(samples["prompts"], return_tensors="pt").input_ids
-    outputs = llm_model.generate(input_ids)
-    preds = tokenizer.batch_decode(outputs)
-
-def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1000, val_size=1000):
+def main(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1000, val_size=1000):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
     ds_name = "cifar10"
     train_ds_raw = load_dataset(ds_name, split="train", streaming=False)
     train_ds = LensDataset(train_ds_raw, processor)
-    train_dataloader = DataLoader(train_ds, batch_size=batch_size)
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     print("Created train loader")
     val_ds_raw = load_dataset(ds_name, split="test", streaming=False)
     val_ds = LensDataset(val_ds_raw, processor)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
@@ -199,25 +192,29 @@ def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1000, val_size=1000)
     for epoch in range(num_epochs):
         #Compute train loss
         train_loss_epoch = 0
+        total, correct = 0, 0
         for i, (images, labels) in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
             samples = forward(images)
-            evaluate(samples, labels)
             train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
-            train_loss.backward()
             wandb.log({"train_loss": train_loss.item()})
             #accelator.backward(train_loss)
             #accelerator.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
+            train_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+            with torch.no_grad():
+                total += len(labels)
+                correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
             print(f"Finished batch {i}")
-            torch.cuda.empty_cache()
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
+        wandb.log({"train_acc": correct / total})
         #accelerator.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         #Compute val loss
         val_loss_epoch = 0
+        total, correct = 0, 0
         for i, (images, labels) in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
@@ -227,8 +224,10 @@ def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1000, val_size=1000)
                 wandb.log({"val_loss": val_loss})
                 #accelerator.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
-            torch.cuda.empty_cache()
+                total += len(labels)
+                correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
+        wandb.log({"val_acc": correct / total})
         #accelerator.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
 
 if __name__ == "__main__":

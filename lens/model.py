@@ -39,7 +39,7 @@ class Lens(nn.Module):
         vocab_tags: str = "llm-lens/vocab_tags",
         split_attributes: str = "full",
         split_tags: str = "train",
-        num_total_tags: int = 5000,
+        #num_total_tags: int = 5000,
         load_8bit: bool = False,
         device: torch.device = default_device,
     ):
@@ -59,13 +59,13 @@ class Lens(nn.Module):
             #    filename=attributes_weights,
             #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
             #)
-            #print("Before tags download")
-            #huggingface_hub.hf_hub_download(
-            #    repo_id="llm-lens/tags",
-            #    filename=tags_weights,
-            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
-            #)
-            #print("After tags download")
+            print("Before tags download")
+            huggingface_hub.hf_hub_download(
+                repo_id="llm-lens/tags",
+                filename=tags_weights,
+                local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
+            )
+            print("After tags download")
 
             #self.attributes_weights = torch.load(
             #    str(
@@ -74,20 +74,20 @@ class Lens(nn.Module):
             #    ),
             #    map_location=self.device,
             #).float()
-            #self.tags_weights = torch.load(
-            #    str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
-            #    map_location=self.device,
-            #).float()
+            self.tags_weights = torch.load(
+                str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+                map_location=self.device,
+            ).float()
             # Load Vocabularies
-            print("Before vocab tags")
+            #print("Before vocab tags")
             self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"])
-            print("After vocab tags")
-            tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
+            #print("After vocab tags")
+            #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
             #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
-            self.vocab_tags = self.vocab_tags[tags_indices]
-            print("Before tags tokens")
-            self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
-            print("After tags tokens")
+            #self.vocab_tags = self.vocab_tags[tags_indices]
+            #print("Before tags tokens")
+            #self.tags_tokens = open_clip.tokenize(self.vocab_tags).to(device)
+            #print("After tags tokens")
             #token_len = self.tags_tokens.argmin(dim=-1).max().item()
             #self.tags_tokens = self.tags_tokens[:, :token_len]
             #self.clip_model.context_length = token_len
@@ -140,7 +140,7 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 20,
+        num_tags: int = 50,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -201,13 +201,11 @@ class Lens(nn.Module):
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
             )
-        print("Before encoding text features")
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
-        with torch.no_grad():
-            text_features = self.clip_model.encode_text(self.tags_tokens)
-        text_features_norm = text_features / text_features.norm(dim=-1, keepdim=True)
-        print("After encoding text features")
-        text_scores = (image_features_norm @ text_features_norm.t()).float()
+        #with torch.no_grad():
+        #    text_features = self.clip_model.encode_text(self.tags_tokens)
+        text_features_norm = self.tags_weights / self.tags_weights.norm(dim=-1, keepdim=True)
+        text_scores = (image_features_norm @ text_features_norm).float()
         print("After computing text scores")
         #text_scores = (image_features_norm @ self.tags_weights).float()
         top_scores, top_indexes = text_scores.topk(k=num_tags, dim=-1)

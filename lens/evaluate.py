@@ -3,48 +3,88 @@ from model import Lens, LensDataset, LensProcessor
 import torch
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"You are using device {device}")
-lens = Lens()
-processor = LensProcessor()
-llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+IGNORE_INDEX = -100
 
-def compute_class_acc(prompts, labels):
+def compute_class_acc(prompt, gt, llm_model, tokenizer):
+    prompts = [prompt for cl in classes]
     tokenizer.pad_token_id = tokenizer.eos_token_id
-    input_ids = tokenizer(prompts, return_tensors="pt").input_ids.to(device)
+    prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True).to(device)
+    label_tokens = tokenizer(classes, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
+    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
     
+    answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
+    #repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=1).view(-1, answer_tok.shape[-1])
+    #repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], k, dim=1).view(-1, answer_mask.shape[-1])
+    reader_tok = reader_tok.reshape(-1, reader_tok.shape[-1])
+    reader_mask = reader_mask.reshape(-1, reader_mask.shape[-1])
+    
+    lsr_input_ids = torch.cat((reader_tok, answer_tok), dim=-1).to(device)
+    lsr_attention_mask = torch.cat((reader_mask, answer_mask), dim=-1).to(device)
+    with torch.autocast("cuda"):
+        lsr_logits = llm_model(
+            input_ids=lsr_input_ids[:, :-1],
+            attention_mask=lsr_attention_mask[:, :-1],
+            use_cache=False,
+        ).logits
+    continuation_length = answer_tok.shape[-1]
+    lsr_logits = lsr_logits[:, -continuation_length:]
+    lsr_labels = answer_tok.masked_fill(answer_mask == 0, IGNORE_INDEX).to(device)
+    token_loss = F.cross_entropy(
+        lsr_logits.reshape(-1, lsr_logits.shape[-1]),
+        lsr_labels.view(-1),
+        ignore_index=IGNORE_INDEX,
+        reduction='none',
+    ).reshape(answer_tok.shape)
+    z = (lsr_labels.reshape(answer_tok.shape) > -1).sum(dim=-1)
+    cross_entropy = token_loss.sum(dim=-1) / z
+    pred = cross_entropy.argmin()
+    print("Cross entropy: ", cross_entropy)
+    correct = (classes[pred] == gt)
+    print("Correctness: ", correct)
+    return correct
     #outputs = llm_model.generate(input_ids, max_length=300)
     #outputs = outputs[0][input_ids.shape[-1]:]
     #pred = tokenizer.decode(outputs)
     #return (pred == labels[0])
 
-def evaluate_pipeline():
-    ds_name = "cifar10"
-    batch_size = 1
-    ds_raw = load_dataset(ds_name, split="train", streaming=False)
-    ds = LensDataset(ds_raw, processor)
-    dataloader = DataLoader(ds, batch_size=batch_size)
+def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer):
     correct, total = 0, 0
     for i, (images, labels) in enumerate(dataloader):
-        if i > 10:
-            continue
         with torch.no_grad():
             samples = lens(images, return_tags=True, return_prompt=True)
-        print(samples["tags"])
         total += images.shape[0]
-        correct += compute_class_acc(samples["prompts"], labels)
+        correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
+        print(correct, total)
+    print(f"Final accuracy: {correct/total}")
 
-def test_prompts():
+def test_prompts(llm_model, tokenizer):
     #tags = ['777 200 aircraft', 'erj 135 aircraft', 'Chengdu j 10', 'Tupolev sb', 'Mil mi 24', 'bae 146 200 aircraft', 'Mahlab', 'a340 300 aircraft', 'a330 300 aircraft', 'aileron', 'Daewoo magnus', 'demonstrator', 'pa 28 aircraft', 'thumb', 'Khene', 'bat', 'Hongdu l 15', 'Kutia', 'Polo', 'Ogokbap']
     #tags = ['calf', 'yoke', 'Elder', 'Mule', 'Bouvier des ardennes', 'Sarangi', 'Kabusecha', 'Spur', 'Hongdu l 15', 'trinket', 'Kurri', 'Khene', 'bear', 'Merlin', 'bolotie', 'Sapphire', 'Oriental longhair', 'Bay', 'Auburn 851', 'Slider']
     tags = [['plane', '777 200 aircraft', '727 200 aircraft', 'erj 135 aircraft', 'Boeing 717', 'md 11 aircraft', '767 300 aircraft', 'Zha cai', 'Chengdu j 10', 'Tgv', 'Boeing 2707', 'airline', 'Xian h 6', 'crj 200 aircraft', 'prop', 'Trijet', '737 500 aircraft', 'Tteokguk', 'tu 154 aircraft', 'tu 134 aircraft']]
     all_prompts = [
-            f"Instruct: you are given the image tags {tags}. Based on this information, output a word that describes the image. \nOutput:"
+            f"Instruct: you are given the image tag {tags}. Based on this information, output a word that describes the image. \nOutput: "
     ]
-    for prompts in all_prompts:
-        compute_class_acc(prompts, ["airplane"])
+    for prompt in all_prompts:
+        compute_class_acc(prompt, "airplane", llm_model, tokenizer)
 
-evaluate_pipeline()
+def interactive_test(llm_model, tokenizer):
+    while True:
+        prompt = input("Specify prompt: ")
+        answer = input("Specify answer: ")
+        compute_class_acc(prompt, answer, llm_model, tokenizer)
+
+def main():
+    #lens = Lens()
+    #processor = LensProcessor()
+    #ds_name = "cifar10"
+    #ds_raw = load_dataset(ds_name, split="train", streaming=False)
+    #ds = LensDataset(ds_raw, processor)
+    #dataloader = DataLoader(ds, batch_size=1)
+    llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
+    tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+    interactive_test(llm_model, tokenizer)
+    #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer)

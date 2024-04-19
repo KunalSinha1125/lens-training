@@ -137,14 +137,12 @@ def create_prompt_sample(
         print(prompt)
 
     elif mode == "tags_only_single":
-        prompt += "\nTag: "
-        prompt += samples[tags_col][idx][desc_idx]
-        prompt += "\nQuestion:"
-        prompt += question
-        prompt += "\nShort Answer:"
+        tag = samples[tags_col][idx][desc_idx]
+        prompt += "Instruct: given the image tag {tag}, output a word describing the image.\nOutput: "
+        print(prompt)
 
     elif mode == "tags_only_test":
-        tags = samples[tags_col][idx]
+        tags = samples[tags_col][idx][desc_idx]
         #loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
         prompt += f"Instruct: you are given the image tags {tags}. Based on this information, output a word that describes the image. \nOutput:"
         #prompt += "\nTag: canine. Answer: dog"
@@ -153,6 +151,11 @@ def create_prompt_sample(
         #prompt += f"\nTag: {tags[desc_idx]}. Answer: "
         #prompt += f"\nTags: {loop_tags}. Answer: "
     
+    elif mode == "tags_only_test_loop":
+        tags = samples[tags_col][idx]
+        loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
+        prompt = f"Instruct: you are given the image tags {loop_tags}. Based on this information, output a word that describes the image. \nOutput:"
+
     elif mode == "tags_only_loop":
         tags = samples[tags_col][idx]
         loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
