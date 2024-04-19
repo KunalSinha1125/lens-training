@@ -168,7 +168,7 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1000, val_size=1000):
+def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
@@ -183,35 +183,10 @@ def main(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1000, val_size=1000)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
-    #lens.clip_model, optimizer, train_dataloader = accelerator.prepare(
-    #    lens.clip_model, optimizer, train_dataloader
-    #)
     lens.clip_model = accelerator.prepare(lens.clip_model)
     print("After prepare")
 
     for epoch in range(num_epochs):
-        #Compute train loss
-        train_loss_epoch = 0
-        total, correct = 0, 0
-        for i, (images, labels) in enumerate(train_dataloader):
-            if i >= (train_size // batch_size):
-                continue
-            samples = forward(images)
-            train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
-            wandb.log({"train_loss": train_loss.item()})
-            #accelator.backward(train_loss)
-            #accelerator.log({"train_loss": train_loss.item()})
-            train_loss_epoch += train_loss.item()
-            train_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            with torch.no_grad():
-                total += len(labels)
-                correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
-            print(f"Finished batch {i}")
-        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
-        wandb.log({"train_acc": correct / total})
-        #accelerator.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         #Compute val loss
         val_loss_epoch = 0
         total, correct = 0, 0
@@ -222,13 +197,30 @@ def main(num_epochs=5000, lr=1e-5, batch_size=1, train_size=1000, val_size=1000)
                 samples = forward(images)
                 val_loss = compute_loss(samples, labels, f"Epoch {epoch}: val").item()
                 wandb.log({"val_loss": val_loss})
-                #accelerator.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
                 total += len(labels)
                 correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         wandb.log({"val_acc": correct / total})
-        #accelerator.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
+        #Compute train loss
+        train_loss_epoch = 0
+        total, correct = 0, 0
+        for i, (images, labels) in enumerate(train_dataloader):
+            if i >= (train_size // batch_size):
+                continue
+            samples = forward(images)
+            train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
+            wandb.log({"train_loss": train_loss.item()})
+            train_loss_epoch += train_loss.item()
+            train_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            with torch.no_grad():
+                total += len(labels)
+                correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
+            print(f"Finished batch {i}")
+        wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
+        wandb.log({"train_acc": correct / total})
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
