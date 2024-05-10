@@ -26,7 +26,9 @@ print(torch.cuda.mem_get_info()[0] / 1e9)
 lens = Lens()
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
-llm_model = AutoModelForCausalLM.from_pretrained("microsoft/phi-2", trust_remote_code=True).to(device)
+llm_model = AutoModelForCausalLM.from_pretrained(
+    "microsoft/phi-2", trust_remote_code=True, 
+    cache_dir="/nlp/scr/ksinha2/JUICE-SCR/my_model_dir").to(device)
 tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 IGNORE_INDEX = -100
 
@@ -44,6 +46,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
             #inputs.append(f"{prompt} {labels[i]}")
             #all_labels.append(labels[i])
     # Tokenize full inputs
+    import pdb; pdb.set_trace()
     tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
     #lsr_tokens = tokenizer(inputs, return_tensors="pt", padding=True).to(device)
     #lsr_input_ids, lsr_attention_mask = lsr_tokens.input_ids, lsr_tokens.attention_mask
@@ -102,7 +105,8 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     scores = token_loss.view(bsz, k, -1)
     #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    import pdb; pdb.set_trace()
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
@@ -123,7 +127,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     print(torch.cuda.mem_get_info()[0] / 1e9)
     return lm_likelihood, lm_perplexity
 
-def compute_tags_likelihood(samples, gamma=5e-4, desc="tags"):
+def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
@@ -153,6 +157,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
+    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(images):
@@ -168,18 +173,18 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=1, val_size=1):
+def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=10, val_size=1):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
     ds_name = "cifar10"
-    train_ds_raw = load_dataset(ds_name, split="train", streaming=False)
+    train_ds_raw = load_dataset(ds_name, split="train")
     train_ds = LensDataset(train_ds_raw, processor)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     print("Created train loader")
-    val_ds_raw = load_dataset(ds_name, split="test", streaming=False)
+    val_ds_raw = load_dataset(ds_name, split="test")
     val_ds = LensDataset(val_ds_raw, processor)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
