@@ -132,13 +132,13 @@ def create_prompt_sample(
         prompt += "\nShort Answer:"
 
     elif mode == "tags_only":
-        tags = samples[tags_col][idx]
-        prompt += f"Instruct: you are given the image tags {tags}. Based on this information, output a word that describes the image. \nOutput:"
+        tags = [t.lower() for t in samples[tags_col][idx]]
+        prompt += f"\"Instruct: given the image tags {tags}, output a word naming the object in the image. Output: \""
         print(prompt)
 
     elif mode == "tags_only_single":
         tag = samples[tags_col][idx][desc_idx].lower()
-        prompt += f"\"Instruct: given the image tag {tag}, output a single word describing the image.\nOutput: \""
+        prompt += f"\"Instruct: given the image tag {tag}, output a word naming the object in the image. Output: \""
 
     elif mode == "tags_only_test":
         tags = samples[tags_col][idx][desc_idx]

@@ -16,7 +16,7 @@ import pandas as pd
 import torch.autograd.profiler as profiler
 import torch.nn as nn
 from accelerate import Accelerator
-from evaluate import compute_class_acc
+from evaluate import compute_class_acc, MODEL_CACHE_DIR
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
@@ -28,7 +28,7 @@ processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
 llm_model = AutoModelForCausalLM.from_pretrained(
     "microsoft/phi-2", trust_remote_code=True, 
-    cache_dir="/nlp/scr/ksinha2/JUICE-SCR/my_model_dir").to(device)
+    cache_dir=MODEL_CACHE_DIR).to(device)
 tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 IGNORE_INDEX = -100
 
@@ -155,6 +155,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
+    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(images):
@@ -170,7 +171,7 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=100, val_size=100):
+def main(num_epochs=5000, lr=1e-4, batch_size=1, train_size=100, val_size=0):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     question = ["What is this image about?" for i in range(batch_size)]
