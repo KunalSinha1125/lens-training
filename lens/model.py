@@ -140,7 +140,7 @@ class Lens(nn.Module):
     def __call__(
         self,
         samples: dict,
-        num_tags: int = 100,
+        num_tags: int = 50,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
         num_beams: int = 5,  # For beam search
@@ -180,7 +180,7 @@ class Lens(nn.Module):
         #    )
 
         if return_prompt:
-            mode = "tags_only"
+            mode = "tags_only_single"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
