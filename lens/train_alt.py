@@ -177,11 +177,11 @@ def main(train_name, train_split, val_name, val_split,
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split)
     train_ds = LensDataset(train_ds_raw, processor, train_name)
-    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, streaming=True)
     print("Created train loader")
     val_ds_raw = load_dataset(val_name, split=val_split)
     val_ds = LensDataset(val_ds_raw, processor, val_name)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True, streaming=True)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
@@ -249,4 +249,4 @@ if __name__ == "__main__":
     if not val_name:
         val_name = train_name
     val_split = args.val_split
-    main()
+    main(train_name, train_split, val_name, val_split)

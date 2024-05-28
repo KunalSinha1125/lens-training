@@ -486,27 +486,23 @@ class LensDataset(IterableDataset):
         with open(classes_dir, 'r') as f:
             self.classes = json.load(f)   
 
-    #def __iter__(self):
-    #    for elem in self.ds:
-    #        clip_image = self.processor([elem["img"]])
-    #        label = self.classes[int(elem["label"])]
-    #        yield clip_image.squeeze()
+    def __iter__(self):
+        img_key, label_key = "image", "label"
+        if self.ds_name == "cifar10":
+            img_key = "img"
+        for elem in self.ds:
+            clip_image = self.processor([elem[img_key]])
+            label = self.classes[int(elem[label_key])]
+            yield clip_image.squeeze(), label
             
     def __len__(self):
         return len(self.ds) 
 
-    def __getitem__(self, idx):
-        img_key, label_key = "image", "label"
-        if self.ds_name == "cifar10":
-            img_key = "img"
-        image = self.ds[idx][img_key]
-        label = self.classes[int(self.ds[idx][label_key])]
-        clip_image = self.processor([image])
-        return clip_image.squeeze(), label
-        #return {
-        #    "id": torch.tensor(id, dtype=torch.int32),
-        #    "clip_image": outputs["clip_image"].squeeze(0),
-        #    "blip_image": outputs["blip_image"].squeeze(0),
-        #    "blip_input_ids": outputs["blip_input_ids"].squeeze(0),
-        #    "questions": outputs["questions"],
-        #}
+    # def __getitem__(self, idx):
+    #     img_key, label_key = "image", "label"
+    #     if self.ds_name == "cifar10":
+    #         img_key = "img"
+    #     image = self.ds[idx][img_key]
+    #     label = self.classes[int(self.ds[idx][label_key])]
+    #     clip_image = self.processor([image])
+    #     return clip_image.squeeze(), label
