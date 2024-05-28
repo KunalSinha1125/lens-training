@@ -171,15 +171,16 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def main(ds_name, num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600):
+def main(train_name, train_split, val_name, val_split, 
+         num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
-    train_ds_raw = load_dataset(ds_name, split="train")
-    train_ds = LensDataset(train_ds_raw, processor, ds_name)
+    train_ds_raw = load_dataset(train_name, split=train_split)
+    train_ds = LensDataset(train_ds_raw, processor, train_name)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     print("Created train loader")
-    val_ds_raw = load_dataset(ds_name, split="test")
-    val_ds = LensDataset(val_ds_raw, processor, ds_name)
+    val_ds_raw = load_dataset(val_name, split=val_split)
+    val_ds = LensDataset(val_ds_raw, processor, val_name)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
@@ -224,10 +225,28 @@ def main(ds_name, num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--dataset',
+    parser.add_argument('--train_dataset',
+                        default="cifar10",
+                        choices=["cifar10", "imagenet-1k"],
+                        type=str,
+                        help='Name of train dataset?')
+    parser.add_argument('--train_split',
+                        default="train",
+                        type=str,
+                        help='Name of split for train dataset?')
+    parser.add_argument('--val_dataset',
                         default=None,
                         choices=["cifar10", "imagenet-1k"],
                         type=str,
-                        help='Name of dataset?')
+                        help='Name of val dataset?')
+    parser.add_argument('--val_split',
+                        default="test",
+                        type=str,
+                        help='Name of split for val dataset?')
     args = parser.parse_args()
-    main(ds_name=args.dataset)
+    train_name, train_split = args.train_dataset, args.train_split
+    val_name = args.val_dataset
+    if not val_name:
+        val_name = train_name
+    val_split = args.val_split
+    main()

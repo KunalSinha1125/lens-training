@@ -496,9 +496,9 @@ class LensDataset(IterableDataset):
         return len(self.ds) 
 
     def __getitem__(self, idx):
-        img_key, label_key = "img", "label"
-        if self.ds_name == "imagenet-1k":
-            img_key = "image"
+        img_key, label_key = "image", "label"
+        if self.ds_name == "cifar10":
+            img_key = "img"
         image = self.ds[idx][img_key]
         label = self.classes[int(self.ds[idx][label_key])]
         clip_image = self.processor([image])
