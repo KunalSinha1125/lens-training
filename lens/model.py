@@ -22,11 +22,11 @@ from utils import (
 )
 import numpy as np
 import random
+import json
 random.seed(1)
 
 def flatten(l):
     return [item for sublist in l for item in sublist]
-
 
 class Lens(nn.Module):
     def __init__(
@@ -476,10 +476,15 @@ class LensDataset(IterableDataset):
         self,
         ds: Dataset,
         processor: Optional[LensProcessor] = None,
+        ds_name: str = "cifar10"
     ):
         self.ds = ds
         self.processor = processor
-        self.classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+        self.ds_name = ds_name
+        label_dir = "labels"
+        classes_dir = os.path.join(label_dir, f"{ds_name}.json")
+        with open(classes_dir, 'r') as f:
+            self.classes = json.load(f)   
 
     #def __iter__(self):
     #    for elem in self.ds:
@@ -491,8 +496,11 @@ class LensDataset(IterableDataset):
         return len(self.ds) 
 
     def __getitem__(self, idx):
-        image = self.ds[idx]["img"]
-        label = self.classes[int(self.ds[idx]["label"])]
+        img_key, label_key = "img", "label"
+        if self.ds_name == "imagenet-1k":
+            img_key = "image"
+        image = self.ds[idx][img_key]
+        label = self.classes[int(self.ds[idx][label_key])]
         clip_image = self.processor([image])
         return clip_image.squeeze(), label
         #return {

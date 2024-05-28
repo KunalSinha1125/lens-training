@@ -171,17 +171,15 @@ def forward(images):
     print("Completed forward pass")
     return samples
 
-def main(num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600):
+def main(ds_name, num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
-    question = ["What is this image about?" for i in range(batch_size)]
-    ds_name = "cifar10"
     train_ds_raw = load_dataset(ds_name, split="train")
-    train_ds = LensDataset(train_ds_raw, processor)
+    train_ds = LensDataset(train_ds_raw, processor, ds_name)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     print("Created train loader")
     val_ds_raw = load_dataset(ds_name, split="test")
-    val_ds = LensDataset(val_ds_raw, processor)
+    val_ds = LensDataset(val_ds_raw, processor, ds_name)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
@@ -226,4 +224,10 @@ def main(num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600
 if __name__ == "__main__":
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
-    main()
+    parser.add_argument('--dataset',
+                        default=None,
+                        choices=["cifar10", "imagenet-1k"],
+                        type=str,
+                        help='Name of dataset?')
+    args = parser.parse_args()
+    main(ds_name=args.dataset)
