@@ -484,13 +484,15 @@ class LensDataset(IterableDataset):
         label_dir = "labels"
         classes_dir = os.path.join(label_dir, f"{ds_name}.json")
         with open(classes_dir, 'r') as f:
-            self.classes = json.load(f)   
+            self.classes = json.load(f)
+            self.classes = [cl.replace("_", " ") for cl in self.classes]
 
     def __iter__(self):
         img_key, label_key = "image", "label"
         if self.ds_name == "cifar10":
             img_key = "img"
         for elem in self.ds:
+            import pdb; pdb.set_trace()
             clip_image = self.processor([elem[img_key]])
             label = self.classes[int(elem[label_key])]
             yield clip_image.squeeze(), label

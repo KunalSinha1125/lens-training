@@ -6,12 +6,11 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+#classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 IGNORE_INDEX = -100
 MODEL_CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
 
-def compute_class_acc(prompts, groundtruths, llm_model, tokenizer):
-    print(prompts[0], groundtruths[0])
+def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, classes):
     batch_size, num_classes = len(prompts), len(classes)
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"

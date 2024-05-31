@@ -149,6 +149,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         table_data["Prompt"] = np.array([
             tokenizer.decode(lsr_input_ids[i]) for i in range(lsr_input_ids.shape[0])
         ])[indices]
+        print(table_data["Prompt"][0])
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
     kl_penalty = F.kl_div(
@@ -172,16 +173,19 @@ def forward(images):
     return samples
 
 def main(train_name, train_split, val_name, val_split, 
-         num_epochs=5000, lr=1e-5, batch_size=16, train_size=1600, val_size=1600):
+         num_epochs=5000, lr=1e-5, batch_size=8, train_size=6400, val_size=1600):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
-    train_ds_raw = load_dataset(train_name, split=train_split)
+    train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)
+    import pdb; pdb.set_trace()
+    train_ds_raw = train_ds_raw.shuffle(seed=0, buffer_size=10000)
     train_ds = LensDataset(train_ds_raw, processor, train_name)
-    train_dataloader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, streaming=True)
+    train_dataloader = DataLoader(train_ds, batch_size=batch_size)
     print("Created train loader")
-    val_ds_raw = load_dataset(val_name, split=val_split)
+    val_ds_raw = load_dataset(val_name, split=val_split, streaming=True, trust_remote_code=True)
+    val_ds_raw = val_ds_raw.shuffle(seed=0, buffer_size=10000)
     val_ds = LensDataset(val_ds_raw, processor, val_name)
-    val_dataloader = DataLoader(val_ds, batch_size=batch_size, shuffle=True, streaming=True)
+    val_dataloader = DataLoader(val_ds, batch_size=batch_size)
     print("Created val loader")
     optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
     print("Before prepare")
@@ -197,10 +201,10 @@ def main(train_name, train_split, val_name, val_split,
                 continue
             with torch.no_grad():
                 samples = forward(images)
-                val_loss = compute_loss(samples, labels, f"Epoch {epoch}: val").item()
+                val_loss = compute_loss(samples, labels).item()
                 wandb.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
-                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer)
+                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         wandb.log({"val_acc": correct / val_size})
         #Compute train loss
@@ -210,24 +214,27 @@ def main(train_name, train_split, val_name, val_split,
             if i >= (train_size // batch_size):
                 continue
             samples = forward(images)
-            train_loss = compute_loss(samples, labels, f"Epoch {epoch}: train")
+            train_loss = compute_loss(samples, labels)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
             with torch.no_grad():
-                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer)
+                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, val_ds.classes)
             print(f"Finished batch {i}")
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         wandb.log({"train_acc": correct / train_size})
 
 if __name__ == "__main__":
+    '''
+    imagenet-1k: train_split validation, val_split test
+    '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--train_dataset',
                         default="cifar10",
-                        choices=["cifar10", "imagenet-1k"],
+                        choices=["cifar10", "imagenet-1k", "food101"],
                         type=str,
                         help='Name of train dataset?')
     parser.add_argument('--train_split',
@@ -236,7 +243,7 @@ if __name__ == "__main__":
                         help='Name of split for train dataset?')
     parser.add_argument('--val_dataset',
                         default=None,
-                        choices=["cifar10", "imagenet-1k"],
+                        choices=["cifar10", "imagenet-1k", "food101"],
                         type=str,
                         help='Name of val dataset?')
     parser.add_argument('--val_split',
