@@ -173,11 +173,10 @@ def forward(images):
     return samples
 
 def main(train_name, train_split, val_name, val_split, 
-         num_epochs=5000, lr=1e-5, batch_size=8, train_size=6400, val_size=1600):
+         num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)
-    import pdb; pdb.set_trace()
     train_ds_raw = train_ds_raw.shuffle(seed=0, buffer_size=10000)
     train_ds = LensDataset(train_ds_raw, processor, train_name)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size)
@@ -228,7 +227,8 @@ def main(train_name, train_split, val_name, val_split,
 
 if __name__ == "__main__":
     '''
-    imagenet-1k: train_split validation, val_split test
+    imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test
+    food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation
     '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)

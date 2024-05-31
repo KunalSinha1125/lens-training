@@ -492,7 +492,6 @@ class LensDataset(IterableDataset):
         if self.ds_name == "cifar10":
             img_key = "img"
         for elem in self.ds:
-            import pdb; pdb.set_trace()
             clip_image = self.processor([elem[img_key]])
             label = self.classes[int(elem[label_key])]
             yield clip_image.squeeze(), label
