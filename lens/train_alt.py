@@ -168,12 +168,12 @@ def forward(images):
         return_intensive_captions=False,
         return_prompt=True
     )
-    print(torch.cuda.mem_get_info()[0] / 1e9)
+    print("Memory left: ", torch.cuda.mem_get_info()[0] / 1e9)
     print("Completed forward pass")
     return samples
 
 def main(train_name, train_split, val_name, val_split, 
-         num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
+         num_epochs=100, lr=1e-5, batch_size=8, train_size=40000, val_size=400):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)

@@ -4,29 +4,27 @@ import torch
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
+import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-#classes = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
 IGNORE_INDEX = -100
 MODEL_CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
 
-def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, buffer_size=100):
+def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, buffer_size=125):
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.padding_side = "left"
+    prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
+    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
+    batch_size, num_classes = len(prompts), min(len(all_classes), buffer_size)
+    reader_tok = torch.repeat_interleave(reader_tok[:, None], num_classes, dim=1).view(-1, reader_tok.shape[-1])
+    reader_mask = torch.repeat_interleave(reader_mask[:, None], num_classes, dim=1).view(-1, reader_mask.shape[-1]) 
     idx = 0
     cross_entropy = []
     while idx < len(all_classes):
-        classes = all_classes[idx:idx+buffer_size]
-        batch_size, num_classes = len(prompts), len(classes)
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-        tokenizer.padding_side = "left"
-        prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
+        classes = all_classes[idx : idx + num_classes]
         tokenizer.padding_side = "right"
         label_tokens = tokenizer(classes, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
-        reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
         answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
-
-        reader_tok = torch.repeat_interleave(reader_tok[:, None], num_classes, dim=1).view(-1, reader_tok.shape[-1])
-        reader_mask = torch.repeat_interleave(reader_mask[:, None], num_classes, dim=1).view(-1, reader_mask.shape[-1])
-
         answer_tok = torch.repeat_interleave(answer_tok[None, :], batch_size, dim=0).view(-1, answer_tok.shape[-1])
         answer_mask = torch.repeat_interleave(answer_mask[None, :], batch_size, dim=0).view(-1, answer_mask.shape[-1])
         
@@ -49,12 +47,9 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
         ).reshape((batch_size, num_classes, -1))
         z = (lsr_labels.reshape((batch_size, num_classes, -1)) > -1).sum(dim=-1)
         cross_entropy.append(token_loss.sum(dim=-1) / z)
-        idx += buffer_size
-    import pdb; pdb.set_trace()
-    predictions = torch.cat(cross_entropy, dim=-1).argmin(dim=-1)
-    correct = 0
-    for i, pred in enumerate(predictions):
-        correct += (classes[pred] == groundtruths[i])
+        idx += num_classes
+    predictions = torch.cat(cross_entropy, dim=-1).argmin(dim=-1).cpu().numpy()
+    correct = (np.array(all_classes)[predictions] == np.array(groundtruths)).sum()
     print("Correctness: ", correct)
     return correct
     #outputs = llm_model.generate(input_ids, max_length=300)

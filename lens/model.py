@@ -200,7 +200,7 @@ class Lens(nn.Module):
         except:
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
-            )
+            ) 
         image_features_norm = image_features / image_features.norm(dim=-1, keepdim=True)
         #with torch.no_grad():
         #    text_features = self.clip_model.encode_text(self.tags_tokens)
