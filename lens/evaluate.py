@@ -97,16 +97,29 @@ def generate_test(llm_model, tokenizer):
         print(tokenizer.decode(output[0]))
 
 def main():
-    #lens = Lens()
-    #processor = LensProcessor()
-    #ds_name = "cifar10"
-    #ds_raw = load_dataset(ds_name, split="train", streaming=False)
-    #ds = LensDataset(ds_raw, processor)
-    #dataloader = DataLoader(ds, batch_size=1)
+    lens = Lens()
+    processor = LensProcessor()
+    ds_name = "HuggingFaceM4/VQAv2"
+    ds_raw = load_dataset(ds_name, split="train", streaming=True)
+    ds = LensDataset(ds_raw, processor)
+    dataloader = DataLoader(ds, batch_size=1)
     llm_model = AutoModelForCausalLM.from_pretrained(
         "microsoft/phi-2", trust_remote_code=True,
         cache_dir=MODEL_CACHE_DIR).to(device)
     tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+    for images, labels in dataloader:
+        samples = lens(
+            images,
+            return_tags=True,
+            return_attributes=False,
+            return_intensive_captions=False,
+            return_prompt=True
+        )
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        model_inputs = tokenizer(samples["prompts"], return_tensors="pt").to(device)
+        output = llm_model.generate(**model_inputs, max_new_tokens=1000)
+        print(tokenizer.decode(output[0]))
+        import pdb; pdb.set_trace()
     #generate_test(llm_model, tokenizer)
     interactive_test(llm_model, tokenizer)
     #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer)
