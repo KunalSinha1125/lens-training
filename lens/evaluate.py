@@ -48,7 +48,9 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
         z = (lsr_labels.reshape((batch_size, num_classes, -1)) > -1).sum(dim=-1)
         cross_entropy.append(token_loss.sum(dim=-1) / z)
         idx += num_classes
-    predictions = torch.cat(cross_entropy, dim=-1).argmin(dim=-1).cpu().numpy()
+    cross_entropy = torch.cat(cross_entropy, dim=-1)
+    print("Cross entropy: ", cross_entropy)
+    predictions = cross_entropy.argmin(dim=-1).cpu().numpy()
     correct = (np.array(all_classes)[predictions] == np.array(groundtruths)).sum()
     print("Correctness: ", correct)
     return correct
@@ -77,11 +79,22 @@ def test_prompts(llm_model, tokenizer):
     for prompt in all_prompts:
         compute_class_acc(prompt, "airplane", llm_model, tokenizer)
 
-def interactive_test(llm_model, tokenizer):
+def interactive_test(llm_model, tokenizer, vqa=True):
     while True:
         prompt = input("Specify prompt: ")
         answer = input("Specify answer: ")
-        compute_class_acc([prompt, prompt], [answer, answer], llm_model, tokenizer)
+        if vqa:
+            compute_class_acc([prompt], [answer], llm_model, tokenizer, [answer])
+        #all_classes = ["hat", "water", "shirt", "bottle", "chip", "bowl", "computer", "wheat", "bird"]
+        #compute_class_acc([prompt, prompt], [answer, answer], llm_model, tokenizer, all_classes)
+
+def generate_test(llm_model, tokenizer):
+    while True:
+        prompt = input("Specify prompt: ")
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        model_inputs = tokenizer(prompt, return_tensors="pt").to(device)
+        output = llm_model.generate(**model_inputs, max_new_tokens=1000)
+        print(tokenizer.decode(output[0]))
 
 def main():
     #lens = Lens()
@@ -94,6 +107,7 @@ def main():
         "microsoft/phi-2", trust_remote_code=True,
         cache_dir=MODEL_CACHE_DIR).to(device)
     tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+    #generate_test(llm_model, tokenizer)
     interactive_test(llm_model, tokenizer)
     #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer)
 
