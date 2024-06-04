@@ -107,10 +107,10 @@ def create_prompt_sample(
     mode="all",
 ):
     prompt = ""
-    #if question_prompt is not None:
-    #    question = question_prompt
-    #else:
-    #    question = samples[question_col][idx]
+    if question_prompt is not None:
+        question = question_prompt
+    else:
+        question = samples[question_col][idx]
 
     if mode == "vqa":
         prompt += "Image:\n"
@@ -177,6 +177,11 @@ def create_prompt_sample(
         #prompt = f"Instruct: Describe the image whose tag is {tag}.\nOutput:"
         #prompt = f'''Alice: can you tell me what you see in this image? The image tags are [{tag}].\nBob:'''
         prompt = f"Describe the given image."
+
+    elif mode == "tags_only_vqa":
+        tags = samples[tags_col][idx][:10]
+        tags_formatted = ", ".join(tags)
+        prompt = f"\"Instruct: {question} Given the image tags {tags_formatted}, output one word to answer this question. Output: \""
 
     elif mode == "attributes_only":
         prompt += "Attribute: "
