@@ -59,6 +59,15 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
     #pred = tokenizer.decode(outputs)
     #return (pred == labels[0])
 
+def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer):
+    model_inputs = tokenizer(prompts, return_tensors="pt").to(device)
+    output = llm_model.generate(**model_inputs, max_new_tokens=1000)
+    generations = tokenizer.batch_decode(output)
+    preds = np.array([gen[len(prompts[i]):] for i in range(len(generations))])
+    correct = (preds == np.array(groundtruths)).sum()
+    print("Correctness: ", correct)
+    return correct
+
 def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer):
     correct, total = 0, 0
     for i, (images, labels) in enumerate(dataloader):
@@ -96,31 +105,17 @@ def generate_test(llm_model, tokenizer):
         output = llm_model.generate(**model_inputs, max_new_tokens=1000)
         print(tokenizer.decode(output[0]))
 
-def main():
-    lens = Lens()
-    processor = LensProcessor()
-    ds_name = "HuggingFaceM4/VQAv2"
-    ds_raw = load_dataset(ds_name, split="train", streaming=True)
-    ds = LensDataset(ds_raw, processor, ds_name)
-    dataloader = DataLoader(ds, batch_size=1)
-    llm_model = AutoModelForCausalLM.from_pretrained(
-        "microsoft/phi-2", trust_remote_code=True,
-        cache_dir=MODEL_CACHE_DIR).to(device)
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
-    for images, questions, labels in dataloader:
-        samples = lens(
-            images,
-            questions=questions,
-            return_tags=True,
-            return_attributes=False,
-            return_intensive_captions=False,
-            return_prompt=True
-        )
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-        model_inputs = tokenizer(samples["prompts"], return_tensors="pt").to(device)
-        output = llm_model.generate(**model_inputs, max_new_tokens=1000)
-        print(tokenizer.decode(output[0]))
-        import pdb; pdb.set_trace()
+# def main():
+#     lens = Lens()
+#     processor = LensProcessor()
+#     ds_name = "HuggingFaceM4/VQAv2"
+#     ds_raw = load_dataset(ds_name, split="train", streaming=True)
+#     ds = LensDataset(ds_raw, processor, ds_name)
+#     dataloader = DataLoader(ds, batch_size=1)
+#     llm_model = AutoModelForCausalLM.from_pretrained(
+#         "microsoft/phi-2", trust_remote_code=True,
+#         cache_dir=MODEL_CACHE_DIR).to(device)
+#     tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)
     #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer)

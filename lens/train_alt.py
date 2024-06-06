@@ -16,7 +16,7 @@ import pandas as pd
 import torch.autograd.profiler as profiler
 import torch.nn as nn
 from accelerate import Accelerator
-from evaluate import compute_class_acc, MODEL_CACHE_DIR
+from evaluate import compute_class_acc, compute_vqa_acc, MODEL_CACHE_DIR
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
@@ -40,7 +40,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_single",
+                samples, i, desc_idx=j, mode=f"{desc}_only_vqa_loop",
             )
             prompts.append(prompt)
             #inputs.append(f"{prompt} {labels[i]}")
@@ -104,7 +104,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     scores = token_loss.view(bsz, k, -1)
     #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
@@ -173,8 +173,8 @@ def forward(images, questions):
     print("Completed forward pass")
     return samples
 
-def main(train_name, train_split, val_name, val_split, 
-         num_epochs=100, lr=1e-5, batch_size=8, train_size=40000, val_size=400):
+def main(train_name, train_split, val_name, val_split, task,
+         num_epochs=100, lr=1e-5, batch_size=32, train_size=3200, val_size=32):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)
@@ -204,7 +204,10 @@ def main(train_name, train_split, val_name, val_split,
                 val_loss = compute_loss(samples, labels).item()
                 wandb.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
-                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
+                if task == "classification":
+                    correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
+                elif task == "vqa":
+                    correct +- compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         wandb.log({"val_acc": correct / val_size})
         #Compute train loss
@@ -221,7 +224,10 @@ def main(train_name, train_split, val_name, val_split,
             train_loss.backward()
             optimizer.step()
             with torch.no_grad():
-                correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, val_ds.classes)
+                if task == "classification":
+                    correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
+                elif task == "vqa":
+                    correct +- compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
             print(f"Finished batch {i}")
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         wandb.log({"train_acc": correct / train_size})
@@ -251,10 +257,14 @@ if __name__ == "__main__":
                         default="test",
                         type=str,
                         help='Name of split for val dataset?')
+    parser.add_argument('--task',
+                        default="vqa",
+                        type=str,
+                        choices=["classification", "vqa"],
+                        help='Type of dataset?')
     args = parser.parse_args()
-    train_name, train_split = args.train_dataset, args.train_split
+    train_name, train_split, val_split = args.train_dataset, args.train_split, args.val_split
     val_name = args.val_dataset
     if not val_name:
         val_name = train_name
-    val_split = args.val_split
-    main(train_name, train_split, val_name, val_split)
+    main(train_name, train_split, val_name, val_split, args.task)
