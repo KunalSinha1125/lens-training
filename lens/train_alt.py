@@ -159,14 +159,15 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     print("Loss: ", kl_penalty.item())
     return kl_penalty
 
-def forward(images):
+def forward(images, questions):
     print("Entering forward pass")
     samples = lens(
         images,
         return_tags=True,
         return_attributes=False,
         return_intensive_captions=False,
-        return_prompt=True
+        return_prompt=True,
+        questions=questions
     )
     print("Memory left: ", torch.cuda.mem_get_info()[0] / 1e9)
     print("Completed forward pass")
@@ -199,7 +200,7 @@ def main(train_name, train_split, val_name, val_split,
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
-                samples = forward(images)
+                samples = forward(images, questions)
                 val_loss = compute_loss(samples, labels).item()
                 wandb.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
@@ -209,10 +210,10 @@ def main(train_name, train_split, val_name, val_split,
         #Compute train loss
         train_loss_epoch = 0
         correct = 0
-        for i, (images, labels) in enumerate(train_dataloader):
+        for i, (images, questions, labels) in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            samples = forward(images)
+            samples = forward(images, questions)
             train_loss = compute_loss(samples, labels)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()

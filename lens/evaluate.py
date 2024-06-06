@@ -107,9 +107,10 @@ def main():
         "microsoft/phi-2", trust_remote_code=True,
         cache_dir=MODEL_CACHE_DIR).to(device)
     tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
-    for images, labels in dataloader:
+    for images, questions, labels in dataloader:
         samples = lens(
             images,
+            questions=questions,
             return_tags=True,
             return_attributes=False,
             return_intensive_captions=False,
