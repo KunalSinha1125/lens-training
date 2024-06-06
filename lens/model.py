@@ -156,8 +156,6 @@ class Lens(nn.Module):
         return_prompt: bool = False,
     ):
 
-        if questions:
-            samples["questions"] = questions
         if return_tags:
             samples = self.forward_tags(
                 samples, num_tags=num_tags, contrastive_th=contrastive_th
@@ -182,6 +180,8 @@ class Lens(nn.Module):
         #        num_captions=num_captions,
         #    )
 
+        if questions:
+            samples["questions"] = questions
         if return_prompt:
             mode = "tags_only_vqa"
             #if return_tags and not return_attributes:
@@ -479,16 +479,19 @@ class LensDataset(IterableDataset):
         self,
         ds: Dataset,
         processor: Optional[LensProcessor] = None,
-        ds_name: str = "cifar10"
+        ds_name: str = "cifar10",
+        task: str = "vqa"
     ):
         self.ds = ds
         self.processor = processor
         self.ds_name = ds_name
+        self.task = task
         label_dir = "labels"
-        classes_dir = os.path.join(label_dir, f"{ds_name}.json")
-        with open(classes_dir, 'r') as f:
-            self.classes = json.load(f)
-            self.classes = [cl.replace("_", " ") for cl in self.classes]
+        if task == "classification":
+            classes_dir = os.path.join(label_dir, f"{ds_name}.json")
+            with open(classes_dir, 'r') as f:
+                self.classes = json.load(f)
+                self.classes = [cl.replace("_", " ") for cl in self.classes]
 
     def __iter__(self):
         img_key, label_key = "image", "label"
@@ -499,7 +502,11 @@ class LensDataset(IterableDataset):
             label_key = "multiple_choice_answer"
         for elem in self.ds:
             clip_image = self.processor([elem[img_key]])
-            label = self.classes[int(elem[label_key])]
+            label = None
+            if self.task == "vqa":
+                label = elem[label_key]
+            elif self.task == "classification":
+                label = self.classes[int(elem[label_key])]
             question = elem[question_key] if question_key in elem else None
             yield clip_image.squeeze(), question, label
             

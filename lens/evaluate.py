@@ -101,7 +101,7 @@ def main():
     processor = LensProcessor()
     ds_name = "HuggingFaceM4/VQAv2"
     ds_raw = load_dataset(ds_name, split="train", streaming=True)
-    ds = LensDataset(ds_raw, processor)
+    ds = LensDataset(ds_raw, processor, ds_name)
     dataloader = DataLoader(ds, batch_size=1)
     llm_model = AutoModelForCausalLM.from_pretrained(
         "microsoft/phi-2", trust_remote_code=True,
@@ -122,7 +122,7 @@ def main():
         print(tokenizer.decode(output[0]))
         import pdb; pdb.set_trace()
     #generate_test(llm_model, tokenizer)
-    interactive_test(llm_model, tokenizer)
+    #interactive_test(llm_model, tokenizer)
     #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer)
 
-main()
+#main()
