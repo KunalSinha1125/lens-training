@@ -63,8 +63,10 @@ def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer):
     model_inputs = tokenizer(prompts, return_tensors="pt").to(device)
     output = llm_model.generate(**model_inputs, max_new_tokens=1000)
     generations = tokenizer.batch_decode(output)
-    preds = np.array([gen[len(prompts[i]):] for i in range(len(generations))])
+    preds = np.array([gen[len(prompts[i]):] for i, gen in enumerate(generations)])
     correct = (preds == np.array(groundtruths)).sum()
+    print("Predictions: ", preds)
+    print("Groundtruth: ", groundtruths)
     print("Correctness: ", correct)
     return correct
 
