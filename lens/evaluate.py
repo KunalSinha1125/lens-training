@@ -60,11 +60,15 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
     #return (pred == labels[0])
 
 def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer):
-    model_inputs = tokenizer(prompts, return_tensors="pt").to(device)
-    output = llm_model.generate(**model_inputs, max_new_tokens=1000)
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.padding_side = "left"
+    model_inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
+    max_new_tokens = max([len(prompt) for prompt in prompts]) + 100
+    output = llm_model.generate(**model_inputs, max_new_tokens=max_new_tokens)
     generations = tokenizer.batch_decode(output)
-    preds = np.array([gen[len(prompts[i]):] for i, gen in enumerate(generations)])
+    preds = np.array([gen.split("\"")[-2].lower() for gen in generations])
     correct = (preds == np.array(groundtruths)).sum()
+    print("Prompts: ", prompts)
     print("Predictions: ", preds)
     print("Groundtruth: ", groundtruths)
     print("Correctness: ", correct)

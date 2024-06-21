@@ -174,7 +174,7 @@ def forward(images, questions):
     return samples
 
 def main(train_name, train_split, val_name, val_split, task,
-         num_epochs=100, lr=1e-5, batch_size=32, train_size=3200, val_size=32):
+         num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)
@@ -196,7 +196,7 @@ def main(train_name, train_split, val_name, val_split, task,
         #Compute val loss
         val_loss_epoch = 0
         correct = 0
-        for i, (images, labels) in enumerate(val_dataloader):
+        for i, (images, questions, labels) in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
@@ -207,7 +207,7 @@ def main(train_name, train_split, val_name, val_split, task,
                 if task == "classification":
                     correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
                 elif task == "vqa":
-                    correct +- compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
+                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
         wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
         wandb.log({"val_acc": correct / val_size})
         #Compute train loss
@@ -227,7 +227,7 @@ def main(train_name, train_split, val_name, val_split, task,
                 if task == "classification":
                     correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
                 elif task == "vqa":
-                    correct +- compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
+                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
             print(f"Finished batch {i}")
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         wandb.log({"train_acc": correct / train_size})
@@ -236,12 +236,13 @@ if __name__ == "__main__":
     '''
     imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test
     food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation
+    vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa
     '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--train_dataset',
                         default="cifar10",
-                        choices=["cifar10", "imagenet-1k", "food101"],
+                        choices=["cifar10", "imagenet-1k", "food101", "HuggingFaceM4/VQAv2"],
                         type=str,
                         help='Name of train dataset?')
     parser.add_argument('--train_split',
@@ -250,7 +251,7 @@ if __name__ == "__main__":
                         help='Name of split for train dataset?')
     parser.add_argument('--val_dataset',
                         default=None,
-                        choices=["cifar10", "imagenet-1k", "food101"],
+                        choices=["cifar10", "imagenet-1k", "food101", "HuggingFaceM4/VQAv2"],
                         type=str,
                         help='Name of val dataset?')
     parser.add_argument('--val_split',
@@ -258,7 +259,7 @@ if __name__ == "__main__":
                         type=str,
                         help='Name of split for val dataset?')
     parser.add_argument('--task',
-                        default="vqa",
+                        default="classification",
                         type=str,
                         choices=["classification", "vqa"],
                         help='Type of dataset?')
