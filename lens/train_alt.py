@@ -104,7 +104,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     scores = token_loss.view(bsz, k, -1)
     #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    -lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
@@ -163,9 +163,9 @@ def forward(images, questions):
     print("Entering forward pass")
     samples = lens(
         images,
-        return_tags=True,
+        return_tags=False,
         return_attributes=False,
-        return_intensive_captions=False,
+        return_intensive_captions=True,
         return_prompt=True,
         questions=questions
     )

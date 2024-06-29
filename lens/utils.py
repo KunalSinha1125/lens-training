@@ -187,6 +187,10 @@ def create_prompt_sample(
         tags = samples[tags_col][idx]
         loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
         prompt = f"\"Instruct: {question} Given the image tags {loop_tags}, output one word to answer this question. Output: \""
+    
+    elif mode == "captions_only_single_vqa":
+        caption = samples[intensive_captions_col][idx][desc_idx]
+        prompt f"\"Instruct: {question} Given the image caption {caption}, output one word to answer this question. Output: \""
 
     elif mode == "attributes_only":
         prompt += "Attribute: "

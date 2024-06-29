@@ -183,7 +183,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "tags_only_vqa"
+            mode = "captions_only_single_vqa"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
