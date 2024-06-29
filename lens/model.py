@@ -148,10 +148,10 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 2,
         questions = [],
-        num_captions: int = 5,
-        return_tags: bool = True,
-        return_attributes: bool = True,
-        return_global_caption: bool = False,
+        num_captions: int = 10,
+        return_tags: bool = False,
+        return_attributes: bool = False,
+        return_global_caption: bool = True,
         return_intensive_captions: bool = False,
         return_prompt: bool = False,
     ):
@@ -164,13 +164,13 @@ class Lens(nn.Module):
         #    samples = self.forward_attributes(
         #        samples, num_attributes=num_attributes, contrastive_th=contrastive_th
         #    )
-        # if return_global_caption:
-        #     samples = self.forward_caption(
-        #         samples,
-        #         num_beams=num_beams,
-        #         max_length=max_length,
-        #         min_length=min_length,
-        #     )
+        if return_global_caption:
+            samples = self.forward_caption(
+                samples,
+                num_beams=num_beams,
+                max_length=max_length,
+                min_length=min_length,
+            )
         #if return_intensive_captions:
         #    samples = self.forward_intensive_caption(
         #        samples,
@@ -257,36 +257,36 @@ class Lens(nn.Module):
         samples[f"top_scores_attributes"] = top_scores
         return samples
 
-    # def forward_caption(
-    #     self,
-    #     samples: dict,
-    #     num_beams: int = 5,
-    #     max_length: int = 30,
-    #     min_length: int = 10,
-    # ):
-    #     # Beam search
-    #     captions_list = []
-    #     pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
-    #     input_ids = samples["blip_input_ids"].to(self.device)
-    #     captions_ids = self.blip_model.generate(
-    #         pixel_values=pixel_values,
-    #         input_ids=input_ids,
-    #         do_sample=False,
-    #         num_beams=num_beams,
-    #         top_p=1,
-    #         max_length=max_length,
-    #         min_length=min_length,
-    #     )
+    def forward_caption(
+        self,
+        samples: dict,
+        num_beams: int = 5,
+        max_length: int = 30,
+        min_length: int = 10,
+    ):
+        # Beam search
+        captions_list = []
+        pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
+        input_ids = samples["blip_input_ids"].to(self.device)
+        captions_ids = self.blip_model.generate(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            do_sample=False,
+            num_beams=num_beams,
+            top_p=1,
+            max_length=max_length,
+            min_length=min_length,
+        )
 
-    #     captions = self.blip_processor.batch_decode(
-    #         captions_ids, skip_special_tokens=True
-    #     )
+        captions = self.blip_processor.batch_decode(
+            captions_ids, skip_special_tokens=True
+        )
 
-    #     for caption in captions:
-    #         captions_list.append(caption[12:].strip())
+        for caption in captions:
+            captions_list.append(caption[12:].strip())
 
-    #     samples["caption"] = captions_list
-    #     return samples
+        samples["caption"] = captions_list
+        return samples
 
     def forward_intensive_caption(
         self,
