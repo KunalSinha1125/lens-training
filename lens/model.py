@@ -451,7 +451,7 @@ class LensProcessor:
         print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)
         print("After CLIP processor")
-        #self.blip_processor = AutoProcessor.from_pretrained(blip_name)
+        self.blip_processor = AutoProcessor.from_pretrained(blip_name)
 
     def load_clip_transform(self, model_name: str):
         if "openai" in model_name:
