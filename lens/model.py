@@ -139,7 +139,9 @@ class Lens(nn.Module):
 
     def __call__(
         self,
-        samples: dict,
+        clip_image=None,
+        blip_image=None,
+        blip_input_ids=None,
         num_tags: int = 10,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
@@ -156,9 +158,10 @@ class Lens(nn.Module):
         return_prompt: bool = False,
     ):
 
+        samples = {}
         if return_tags:
             samples = self.forward_tags(
-                samples, num_tags=num_tags, contrastive_th=contrastive_th
+                clip_image, num_tags=num_tags, contrastive_th=contrastive_th
             )
         #if return_attributes:
         #    samples = self.forward_attributes(
@@ -166,7 +169,8 @@ class Lens(nn.Module):
         #    )
         if return_global_caption:
             samples = self.forward_caption(
-                samples,
+                blip_image,
+                blip_input_ids,
                 num_beams=num_beams,
                 max_length=max_length,
                 min_length=min_length,
@@ -193,13 +197,12 @@ class Lens(nn.Module):
         return samples
 
     def forward_tags(
-        self, images, num_tags: int = 100, contrastive_th: float = 0.2
+        self, samples: dict, num_tags: int = 100, contrastive_th: float = 0.2
     ):
         # Get Image Features
-        samples = {}
         tags = []
         try:
-            image_features = self.clip_model.encode_image(images.to("cuda"))#.to(dtype=torch.bfloat16))
+            image_features = self.clip_model.encode_image(samples["clip_image"].to("cuda"))#.to(dtype=torch.bfloat16))
         except:
             image_features = self.clip_model.get_image_features(
                 pixel_values=samples["clip_image"]
@@ -259,15 +262,17 @@ class Lens(nn.Module):
 
     def forward_caption(
         self,
-        samples: dict,
+        blip_image,
+        blip_input_ids,
         num_beams: int = 5,
         max_length: int = 30,
         min_length: int = 10,
     ):
         # Beam search
         captions_list = []
-        pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
-        input_ids = samples["blip_input_ids"].to(self.device)
+        import pdb; pdb.set_trace()
+        pixel_values = blip_image.to(self.device, self.blip_model.dtype)
+        input_ids = blip_input_ids.to(self.device)
         captions_ids = self.blip_model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
@@ -460,18 +465,17 @@ class LensProcessor:
             clip_image = torch.stack([self.clip_processor(image) for image in images])
         except:
             clip_image = self.clip_processor(images=images, return_tensors="pt")["pixel_values"]
-        #outputs = self.blip_processor(
-        #    images=images, text=["a picture of"] * len(images), return_tensors="pt"
-        #)
-        #blip_image = outputs["pixel_values"]
-        #blip_input_ids = outputs["input_ids"]
-        return clip_image
-        #return {
-            #"clip_image": clip_image,
-            #"blip_image": blip_image,
-            #"blip_input_ids": blip_input_ids,
-            #"questions": questions,
-        #}
+        outputs = self.blip_processor(
+           images=images, text=["a picture of"] * len(images), return_tensors="pt"
+        )
+        blip_image = outputs["pixel_values"]
+        blip_input_ids = outputs["input_ids"]
+        return {
+            "clip_image": clip_image,
+            "blip_image": blip_image,
+            "blip_input_ids": blip_input_ids,
+            "questions": questions,
+        }
 
 
 class LensDataset(IterableDataset):
@@ -502,7 +506,9 @@ class LensDataset(IterableDataset):
         elif "VQA" in self.ds_name:
             label_key = "multiple_choice_answer"
         for elem in self.ds:
-            clip_image = self.processor([elem[img_key]])
+            processed = self.processor([elem[img_key]])
+            clip_image = processed["clip_image"]
+            blip_image, blip_input_ids = processed["blip_image"], processed["blip_input_ids"]
             label = None
             if self.task == "vqa":
                 label = elem[label_key]
@@ -510,7 +516,8 @@ class LensDataset(IterableDataset):
                 label = self.classes[int(elem[label_key])]
             question = elem[question_key] if question_key in elem else None
             question_type = elem[question_type_key] if question_type_key in elem else None
-            yield clip_image.squeeze(), question, question_type, label
+            import pdb; pdb.set_trace()
+            yield clip_image.squeeze(), blip_image.squeeze(), blip_input_ids.squeeze(), question, question_type, label
             
     def __len__(self):
         return len(self.ds) 

@@ -84,12 +84,12 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer,
                       data_size=1000, batch_size=8, task="vqa"):
     correct, total = 0, 0
     correct_by_type = {}
-    for i, (images, questions, question_types, labels) in enumerate(dataloader):
+    for i, (clip_images, blip_images, blip_input_ids, questions, question_types, labels) in enumerate(dataloader):
         if i > data_size // batch_size:
             continue
         with torch.no_grad():
-            samples = lens(images, return_intensive_captions=True, return_prompt=True, questions=questions)
-        total += images.shape[0]
+            samples = lens(clip_images, return_intensive_captions=True, return_prompt=True, questions=questions)
+        total += clip_images.shape[0]
         if task == "vqa":
             correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer, question_types, correct_by_type)
         else:
