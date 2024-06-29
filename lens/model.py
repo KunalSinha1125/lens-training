@@ -496,6 +496,7 @@ class LensDataset(IterableDataset):
     def __iter__(self):
         img_key, label_key = "image", "label"
         question_key = "question"
+        question_type_key = "question_type"
         if self.ds_name == "cifar10":
             img_key = "img"
         elif "VQA" in self.ds_name:
@@ -508,7 +509,8 @@ class LensDataset(IterableDataset):
             elif self.task == "classification":
                 label = self.classes[int(elem[label_key])]
             question = elem[question_key] if question_key in elem else None
-            yield clip_image.squeeze(), question, label
+            question_type = elem[question_type_key] if question_type_key in elem else None
+            yield clip_image.squeeze(), question, question_type, label
             
     def __len__(self):
         return len(self.ds) 

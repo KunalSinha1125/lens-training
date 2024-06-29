@@ -196,7 +196,7 @@ def main(train_name, train_split, val_name, val_split, task,
         #Compute val loss
         val_loss_epoch = 0
         correct = 0
-        for i, (images, questions, labels) in enumerate(val_dataloader):
+        for i, (images, questions, question_types, labels) in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
@@ -213,7 +213,7 @@ def main(train_name, train_split, val_name, val_split, task,
         #Compute train loss
         train_loss_epoch = 0
         correct = 0
-        for i, (images, questions, labels) in enumerate(train_dataloader):
+        for i, (images, questions, question_types, labels) in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
             samples = forward(images, questions)
