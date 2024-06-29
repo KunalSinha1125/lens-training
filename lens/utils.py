@@ -190,7 +190,7 @@ def create_prompt_sample(
     
     elif mode == "captions_only_single_vqa":
         caption = samples[caption_col][idx][desc_idx]
-        prompt f"\"Instruct: {question} Given the image caption {caption}, output one word to answer this question. Output: \""
+        prompt = f"\"Instruct: {question} Given the image caption {caption}, output one word to answer this question. Output: \""
 
     elif mode == "attributes_only":
         prompt += "Attribute: "
