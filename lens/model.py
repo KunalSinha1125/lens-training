@@ -163,10 +163,14 @@ class Lens(nn.Module):
         return_prompt: bool = False,
     ):
 
-        samples = {}
+        samples = {
+            "clip_image": clip_image,
+            "blip_image": blip_image,
+            "blip_input_ids": blip_input_ids
+        }
         if return_tags:
             samples = self.forward_tags(
-                clip_image, num_tags=num_tags, contrastive_th=contrastive_th
+                samples, num_tags=num_tags, contrastive_th=contrastive_th
             )
         #if return_attributes:
         #    samples = self.forward_attributes(
@@ -267,16 +271,15 @@ class Lens(nn.Module):
 
     def forward_caption(
         self,
-        blip_image,
-        blip_input_ids,
+        samples: dict,
         num_beams: int = 5,
         max_length: int = 30,
         min_length: int = 10,
     ):
         # Beam search
         captions_list = []
-        pixel_values = blip_image.to(self.device, self.blip_model.dtype)
-        input_ids = blip_input_ids.to(self.device)
+        pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
+        input_ids = samples["blip_input_ids"].to(self.device)
         captions_ids = self.blip_model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
