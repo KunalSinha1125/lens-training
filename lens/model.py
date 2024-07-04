@@ -103,7 +103,7 @@ class Lens(nn.Module):
             self.blip_model = self.load_caption_model(
                 self.blip_name, load_8bit, self.device
             )
-            #self.blip_processor = AutoProcessor.from_pretrained(self.blip_name)
+            self.blip_processor = AutoProcessor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
 
     def load_caption_model(
         self, model_name: str, load_8bit: bool, device: torch.device
@@ -455,11 +455,11 @@ class LensProcessor:
         print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)
         print("After CLIP processor")
-        self.blip_processor = AutoProcessor.from_pretrained(blip_name)
+        self.blip_processor = AutoProcessor.from_pretrained(blip_name, cache_dir=CACHE_DIR)
 
     def load_clip_transform(self, model_name: str):
         if "openai" in model_name:
-            return CLIPProcessor.from_pretrained(model_name)
+            return CLIPProcessor.from_pretrained(model_name, cache_dir=CACHE_DIR)
 
         elif "laion" in model_name:
             return open_clip.create_model_and_transforms(model_name)[2]

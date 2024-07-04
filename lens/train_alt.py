@@ -29,7 +29,7 @@ print(torch.cuda.mem_get_info()[0] / 1e9)
 llm_model = AutoModelForCausalLM.from_pretrained(
     "microsoft/phi-2", trust_remote_code=True, 
     cache_dir=CACHE_DIR).to(device)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
