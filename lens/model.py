@@ -28,6 +28,8 @@ random.seed(1)
 def flatten(l):
     return [item for sublist in l for item in sublist]
 
+MODEL_CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
+
 class Lens(nn.Module):
     def __init__(
         self,
@@ -44,11 +46,11 @@ class Lens(nn.Module):
         device: torch.device = default_device,
     ):
         super().__init__()
-        # Load Base models
+        # Load Base model
         accelerator = Accelerator()
         self.device = device
         self.clip_name = clip_name
-        #self.blip_name = blip_name
+        self.blip_name = blip_name
         if self.clip_name is not None:
             print("Before CLIP model")
             self.clip_model = self.load_clip_model(self.clip_name, self.device)
@@ -80,7 +82,7 @@ class Lens(nn.Module):
             ).float()
             # Load Vocabularies
             #print("Before vocab tags")
-            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags)["prompt_descriptions"])
+            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags, cache_dir=MODEL_CACHE_DIR)["prompt_descriptions"])
             #print("After vocab tags")
             #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
             #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
@@ -97,10 +99,10 @@ class Lens(nn.Module):
             #    ]
             #)
 
-        #if self.blip_name is not None:
-            #self.blip_model = self.load_caption_model(
-            #    self.blip_name, load_8bit, self.device
-            #)
+        if self.blip_name is not None:
+            self.blip_model = self.load_caption_model(
+                self.blip_name, load_8bit, self.device
+            )
             #self.blip_processor = AutoProcessor.from_pretrained(self.blip_name)
 
     def load_caption_model(
@@ -112,15 +114,17 @@ class Lens(nn.Module):
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
                 device_map={"": device},
                 load_in_8bit=True,
-                config="blip_config.json"
+                config="blip_config.json",
+                cache_dir=MODEL_CACHE_DIR
             )
         else:
             model = BlipForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
-                config="blip_config.json"
+                config="blip_config.json",
+                cache_dir=MODEL_CACHE_DIR
             )
-        model = model.eval()
+        model = model.train()
         model = model.to(device)
 
         return model
@@ -134,6 +138,7 @@ class Lens(nn.Module):
             model = open_clip.create_model_and_transforms(model_name)[0].to(device)
             print(f"Memory left: {torch.cuda.mem_get_info()[0] / 1e9}")
             print("After create model and transform")
+        model = model.train()
         model.set_grad_checkpointing()
         return model
 
@@ -270,7 +275,6 @@ class Lens(nn.Module):
     ):
         # Beam search
         captions_list = []
-        import pdb; pdb.set_trace()
         pixel_values = blip_image.to(self.device, self.blip_model.dtype)
         input_ids = blip_input_ids.to(self.device)
         captions_ids = self.blip_model.generate(
@@ -473,8 +477,7 @@ class LensProcessor:
         return {
             "clip_image": clip_image,
             "blip_image": blip_image,
-            "blip_input_ids": blip_input_ids,
-            "questions": questions,
+            "blip_input_ids": blip_input_ids
         }
 
 
@@ -516,7 +519,6 @@ class LensDataset(IterableDataset):
                 label = self.classes[int(elem[label_key])]
             question = elem[question_key] if question_key in elem else None
             question_type = elem[question_type_key] if question_type_key in elem else None
-            import pdb; pdb.set_trace()
             yield clip_image.squeeze(), blip_image.squeeze(), blip_input_ids.squeeze(), question, question_type, label
             
     def __len__(self):

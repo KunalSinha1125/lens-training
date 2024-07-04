@@ -1,5 +1,5 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from model import Lens, LensDataset, LensProcessor
+from model import Lens, LensDataset, LensProcessor, MODEL_CACHE_DIR
 import torch
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
@@ -8,7 +8,6 @@ import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 IGNORE_INDEX = -100
-MODEL_CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
 
 def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, buffer_size=125):
     tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -84,12 +83,16 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer,
                       data_size=1000, batch_size=8, task="vqa"):
     correct, total = 0, 0
     correct_by_type = {}
-    for i, (clip_images, blip_images, blip_input_ids, questions, question_types, labels) in enumerate(dataloader):
+    for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(dataloader):
         if i > data_size // batch_size:
             continue
         with torch.no_grad():
-            samples = lens(clip_images, return_intensive_captions=True, return_prompt=True, questions=questions)
-        total += clip_images.shape[0]
+            samples = lens(
+                clip_image, blip_image, blip_input_ids,
+                return_intensive_captions=True, return_prompt=True, 
+                questions=questions
+            )
+        total += batch_size
         if task == "vqa":
             correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer, question_types, correct_by_type)
         else:

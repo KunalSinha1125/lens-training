@@ -1,4 +1,4 @@
-from model import Lens, LensDataset, LensProcessor
+from model import Lens, LensDataset, LensProcessor, MODEL_CACHE_DIR
 import requests
 from PIL import Image
 from scipy.special import rel_entr
@@ -16,7 +16,7 @@ import pandas as pd
 import torch.autograd.profiler as profiler
 import torch.nn as nn
 from accelerate import Accelerator
-from evaluate import compute_class_acc, compute_vqa_acc, MODEL_CACHE_DIR
+from evaluate import compute_class_acc, compute_vqa_acc
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
