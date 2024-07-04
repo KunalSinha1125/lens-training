@@ -28,7 +28,7 @@ random.seed(1)
 def flatten(l):
     return [item for sublist in l for item in sublist]
 
-MODEL_CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
+CACHE_DIR = "/nlp/scr/ksinha2/JUICE-SCR/my_model_dir"
 
 class Lens(nn.Module):
     def __init__(
@@ -82,7 +82,7 @@ class Lens(nn.Module):
             ).float()
             # Load Vocabularies
             #print("Before vocab tags")
-            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags, cache_dir=MODEL_CACHE_DIR)["prompt_descriptions"])
+            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags, cache_dir=CACHE_DIR)["prompt_descriptions"])
             #print("After vocab tags")
             #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
             #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
@@ -115,14 +115,14 @@ class Lens(nn.Module):
                 device_map={"": device},
                 load_in_8bit=True,
                 config="blip_config.json",
-                cache_dir=MODEL_CACHE_DIR
+                cache_dir=CACHE_DIR
             )
         else:
             model = BlipForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
                 config="blip_config.json",
-                cache_dir=MODEL_CACHE_DIR
+                cache_dir=CACHE_DIR
             )
         model = model.train()
         model = model.to(device)

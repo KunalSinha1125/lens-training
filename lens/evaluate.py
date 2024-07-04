@@ -1,5 +1,5 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from model import Lens, LensDataset, LensProcessor, MODEL_CACHE_DIR
+from model import Lens, LensDataset, LensProcessor, CACHE_DIR
 import torch
 from datasets import Dataset, load_dataset
 from torch.utils.data import DataLoader
@@ -132,13 +132,13 @@ def main():
     lens = Lens()
     processor = LensProcessor()
     ds_name = "HuggingFaceM4/VQAv2"
-    ds_raw = load_dataset(ds_name, split="train", streaming=True)
+    ds_raw = load_dataset(ds_name, split="train", streaming=True, cache_dir=CACHE_DIR)
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
     llm_model = AutoModelForCausalLM.from_pretrained(
         "microsoft/phi-2", trust_remote_code=True,
-        cache_dir=MODEL_CACHE_DIR).to(device)
+        cache_dir=CACHE_DIR).to(device)
     tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)

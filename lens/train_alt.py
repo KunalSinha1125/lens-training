@@ -1,4 +1,4 @@
-from model import Lens, LensDataset, LensProcessor, MODEL_CACHE_DIR
+from model import Lens, LensDataset, LensProcessor, CACHE_DIR
 import requests
 from PIL import Image
 from scipy.special import rel_entr
@@ -28,7 +28,7 @@ processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
 llm_model = AutoModelForCausalLM.from_pretrained(
     "microsoft/phi-2", trust_remote_code=True, 
-    cache_dir=MODEL_CACHE_DIR).to(device)
+    cache_dir=CACHE_DIR).to(device)
 tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True)
 IGNORE_INDEX = -100
 
@@ -177,12 +177,12 @@ def main(train_name, train_split, val_name, val_split, task,
          num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
-    train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True)
+    train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True, cache_dir=CACHE_DIR)
     train_ds_raw = train_ds_raw.shuffle(seed=0, buffer_size=10000)
     train_ds = LensDataset(train_ds_raw, processor, train_name)
     train_dataloader = DataLoader(train_ds, batch_size=batch_size)
     print("Created train loader")
-    val_ds_raw = load_dataset(val_name, split=val_split, streaming=True, trust_remote_code=True)
+    val_ds_raw = load_dataset(val_name, split=val_split, streaming=True, trust_remote_code=True, cache_dir=CACHE_DIR)
     val_ds_raw = val_ds_raw.shuffle(seed=0, buffer_size=10000)
     val_ds = LensDataset(val_ds_raw, processor, val_name)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size)
