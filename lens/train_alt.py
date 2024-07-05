@@ -196,23 +196,6 @@ def main(train_name, train_split, val_name, val_split, task, desc,
     print("After prepare")
 
     for epoch in range(num_epochs):
-        #Compute val loss
-        val_loss_epoch = 0
-        correct = 0
-        for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(val_dataloader):
-            if i >= (val_size // batch_size):
-                continue
-            with torch.no_grad():
-                samples = forward(clip_image, blip_image, blip_input_ids, questions)
-                val_loss = compute_loss(samples, labels, desc=desc).item()
-                wandb.log({"val_loss": val_loss})
-                val_loss_epoch += val_loss
-                if task == "classification":
-                    correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
-                elif task == "vqa":
-                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
-        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
-        wandb.log({"val_acc": correct / val_size})
         #Compute train loss
         train_loss_epoch = 0
         correct = 0
@@ -234,6 +217,23 @@ def main(train_name, train_split, val_name, val_split, task, desc,
             print(f"Finished batch {i}")
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         wandb.log({"train_acc": correct / train_size})
+        #Compute val loss
+        val_loss_epoch = 0
+        correct = 0
+        for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(val_dataloader):
+            if i >= (val_size // batch_size):
+                continue
+            with torch.no_grad():
+                samples = forward(clip_image, blip_image, blip_input_ids, questions)
+                val_loss = compute_loss(samples, labels, desc=desc).item()
+                wandb.log({"val_loss": val_loss})
+                val_loss_epoch += val_loss
+                if task == "classification":
+                    correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
+                elif task == "vqa":
+                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
+        wandb.log({"val_loss_epoch": val_loss_epoch / (val_size // batch_size)})
+        wandb.log({"val_acc": correct / val_size})
 
 if __name__ == "__main__":
     '''
