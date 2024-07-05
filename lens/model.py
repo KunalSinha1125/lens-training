@@ -150,7 +150,6 @@ class Lens(nn.Module):
         num_tags: int = 10,
         num_attributes: int = 50,
         contrastive_th: float = 0.2,
-        num_beams: int = 5,  # For beam search
         max_length: int = 30,
         min_length: int = 10,
         top_k: int = 2,
@@ -178,9 +177,8 @@ class Lens(nn.Module):
         #    )
         if return_global_caption:
             samples = self.forward_caption(
-                blip_image,
-                blip_input_ids,
-                num_beams=num_beams,
+                samples,
+                num_captions=num_captions,
                 max_length=max_length,
                 min_length=min_length,
             )
@@ -196,7 +194,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "captions_only_single_vqa"
+            mode = "captions_only_vqa"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -272,7 +270,7 @@ class Lens(nn.Module):
     def forward_caption(
         self,
         samples: dict,
-        num_beams: int = 5,
+        num_captions: int = 10,
         max_length: int = 30,
         min_length: int = 10,
     ):
@@ -284,7 +282,8 @@ class Lens(nn.Module):
             pixel_values=pixel_values,
             input_ids=input_ids,
             do_sample=False,
-            num_beams=num_beams,
+            num_return_sequences=num_captions,
+            num_beams=num_captions,
             top_p=1,
             max_length=max_length,
             min_length=min_length,
@@ -293,11 +292,10 @@ class Lens(nn.Module):
         captions = self.blip_processor.batch_decode(
             captions_ids, skip_special_tokens=True
         )
-
         for caption in captions:
             captions_list.append(caption[12:].strip())
-
-        samples["caption"] = captions_list
+        captions_list = np.array(captions_list).reshape((-1, num_captions))
+        samples["captions"] = captions_list
         return samples
 
     def forward_intensive_caption(
@@ -347,7 +345,7 @@ class Lens(nn.Module):
         samples: dict,
         mode: str = "all",  # vqa or vision or hm or or all
     ):
-        num_samples = len(samples["tags"])
+        num_samples = len(samples["tags"]) if "tags" in samples else len(samples["captions"])
         prompts = []
         for idx in range(num_samples):
             prompt = create_prompt_sample(samples, idx, mode=mode)

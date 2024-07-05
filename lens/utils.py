@@ -99,7 +99,7 @@ def create_prompt_sample(
     desc_idx=0,
     tags_col="tags",
     attributes_col="attributes",
-    caption_col="caption",
+    caption_col="captions",
     intensive_captions_col="intensive_captions",
     question_col="questions",
     question_prompt=None,
@@ -188,9 +188,14 @@ def create_prompt_sample(
         loop_tags = ",".join(tags[:desc_idx] + tags[desc_idx+1:])
         prompt = f"\"Instruct: {question} Given the image tags {loop_tags}, output one word to answer this question. Output: \""
     
+    elif mode == "captions_only_vqa":
+        captions = samples[caption_col][idx]
+        captions = "\n".join([cap.strip() for cap in captions])
+        prompt = f"\"Instruct: Answer the question based on the image captions. Captions:\n{captions}\nQuestion: {question} Answer in one word.\nOutput: \""
+
     elif mode == "captions_only_single_vqa":
         caption = samples[caption_col][idx][desc_idx]
-        prompt = f"\"Instruct: {question} Given the image caption {caption}, output one word to answer this question. Output: \""
+        prompt = f"\"Instruct: {question} Given the image captions [{caption}], output one word to answer this question. Output: \""
 
     elif mode == "attributes_only":
         prompt += "Attribute: "
