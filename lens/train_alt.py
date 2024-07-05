@@ -40,7 +40,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_vqa_loop",
+                samples, i, desc_idx=j, mode=f"{desc}_only_vqa",
             )
             prompts.append(prompt)
             #inputs.append(f"{prompt} {labels[i]}")
@@ -132,9 +132,9 @@ def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
     return tags_likelihood, tags_scores
 
 def compute_loss(samples, labels, table_name=None, desc="tags"):
-    tags_likelihood, tags_scores = compute_tags_likelihood(samples)
+    tags_likelihood, tags_scores = compute_tags_likelihood(samples, desc=desc)
     with torch.no_grad():
-        llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood(samples, labels)
+        llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood(samples, labels, desc=desc)
     if table_name:
         table_data = {
             "Tags likelihood": tags_likelihood[0],
@@ -173,7 +173,7 @@ def forward(images, questions):
     print("Completed forward pass")
     return samples
 
-def main(train_name, train_split, val_name, val_split, task,
+def main(train_name, train_split, val_name, val_split, task, desc
          num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
@@ -196,11 +196,11 @@ def main(train_name, train_split, val_name, val_split, task,
         #Compute val loss
         val_loss_epoch = 0
         correct = 0
-        for i, (images, questions, question_types, labels) in enumerate(val_dataloader):
+        for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(val_dataloader):
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
-                samples = forward(images, questions)
+                samples = forward(clip_image, questions)
                 val_loss = compute_loss(samples, labels).item()
                 wandb.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
@@ -213,10 +213,10 @@ def main(train_name, train_split, val_name, val_split, task,
         #Compute train loss
         train_loss_epoch = 0
         correct = 0
-        for i, (images, questions, question_types, labels) in enumerate(train_dataloader):
+        for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            samples = forward(images, questions)
+            samples = forward(clip_image, questions)
             train_loss = compute_loss(samples, labels)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
@@ -263,9 +263,14 @@ if __name__ == "__main__":
                         type=str,
                         choices=["classification", "vqa"],
                         help='Type of dataset?')
+    parser.add_argument('--desc',
+                        type=str,
+                        nargs='+',
+                        choices=["tags", "attributes", "captions"],
+                        help='Which vision modules to train')
     args = parser.parse_args()
     train_name, train_split, val_split = args.train_dataset, args.train_split, args.val_split
     val_name = args.val_dataset
     if not val_name:
         val_name = train_name
-    main(train_name, train_split, val_name, val_split, args.task)
+    main(train_name, train_split, val_name, val_split, task=args.task, desc=args.desc)
