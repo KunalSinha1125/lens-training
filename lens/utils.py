@@ -191,11 +191,11 @@ def create_prompt_sample(
     elif mode == "captions_only_vqa":
         captions = samples[caption_col][idx]
         captions = "\n".join([cap.strip() for cap in captions])
-        prompt = f"\"Instruct: Answer the question based on the image captions. Captions:\n{captions}\nQuestion: {question} Answer in one word.\nOutput: \""
+        prompt = f"\"Instruct: Answer the question based on the image captions.\nCaptions:\n{captions}\nQuestion: {question} Answer in one word, phrase, or number.\nOutput: \""
 
-    elif mode == "captions_only_single_vqa":
+    elif mode == "captions_only_vqa_single":
         caption = samples[caption_col][idx][desc_idx]
-        prompt = f"\"Instruct: {question} Given the image captions [{caption}], output one word to answer this question. Output: \""
+        prompt = f"\"Instruct: Answer the question based on the image caption.\nCaption: {caption}\nQuestion: {question} Answer in one word, phrase, or number.\nOutput: \""
 
     elif mode == "attributes_only":
         prompt += "Attribute: "

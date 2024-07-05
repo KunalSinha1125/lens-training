@@ -144,4 +144,4 @@ def main():
     #interactive_test(llm_model, tokenizer)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, data_size, batch_size)
 
-main()
+#main()

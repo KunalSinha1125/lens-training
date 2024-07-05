@@ -278,7 +278,7 @@ class Lens(nn.Module):
         captions_list = []
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
-        captions_ids, captions_logits = self.blip_model.generate(
+        captions_outputs = self.blip_model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
             do_sample=False,
@@ -287,9 +287,11 @@ class Lens(nn.Module):
             top_p=1,
             max_length=max_length,
             min_length=min_length,
-            output_scores=True
+            output_scores=True,
+            return_dict_in_generate=True
         )
-        samples["top_scores_captions"] = captions_logits
+        captions_ids = captions_outputs.sequences
+        samples["top_scores_captions"] = captions_outputs.sequences_scores
 
         captions = self.blip_processor.batch_decode(
             captions_ids, skip_special_tokens=True
@@ -520,8 +522,8 @@ class LensDataset(IterableDataset):
                 label = elem[label_key]
             elif self.task == "classification":
                 label = self.classes[int(elem[label_key])]
-            question = elem[question_key] if question_key in elem else None
-            question_type = elem[question_type_key] if question_type_key in elem else None
+            question = elem[question_key] if question_key in elem else ""
+            question_type = elem[question_type_key] if question_type_key in elem else ""
             yield clip_image.squeeze(), blip_image.squeeze(), blip_input_ids.squeeze(), question, question_type, label
             
     def __len__(self):

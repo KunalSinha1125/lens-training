@@ -40,7 +40,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_vqa",
+                samples, i, desc_idx=j, mode=f"{desc}_only_vqa_single",
             )
             prompts.append(prompt)
             #inputs.append(f"{prompt} {labels[i]}")
@@ -104,7 +104,7 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     scores = token_loss.view(bsz, k, -1)
     #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
     z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    -lm_perplexity = scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
+    lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
@@ -159,13 +159,16 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     print("Loss: ", kl_penalty.item())
     return kl_penalty
 
-def forward(images, questions):
+def forward(clip_image, blip_image, blip_input_ids, questions):
     print("Entering forward pass")
     samples = lens(
-        images,
+        clip_image,
+        blip_image,
+        blip_input_ids,
         return_tags=False,
         return_attributes=False,
-        return_intensive_captions=True,
+        return_intensive_captions=False,
+        return_global_caption=True,
         return_prompt=True,
         questions=questions
     )
@@ -173,7 +176,7 @@ def forward(images, questions):
     print("Completed forward pass")
     return samples
 
-def main(train_name, train_split, val_name, val_split, task, desc
+def main(train_name, train_split, val_name, val_split, task, desc,
          num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
@@ -200,8 +203,8 @@ def main(train_name, train_split, val_name, val_split, task, desc
             if i >= (val_size // batch_size):
                 continue
             with torch.no_grad():
-                samples = forward(clip_image, questions)
-                val_loss = compute_loss(samples, labels).item()
+                samples = forward(clip_image, blip_image, blip_input_ids, questions)
+                val_loss = compute_loss(samples, labels, desc=desc).item()
                 wandb.log({"val_loss": val_loss})
                 val_loss_epoch += val_loss
                 if task == "classification":
@@ -216,8 +219,8 @@ def main(train_name, train_split, val_name, val_split, task, desc
         for i, (clip_image, blip_image, blip_input_ids, questions, question_types, labels) in enumerate(train_dataloader):
             if i >= (train_size // batch_size):
                 continue
-            samples = forward(clip_image, questions)
-            train_loss = compute_loss(samples, labels)
+            samples = forward(clip_image, blip_image, blip_input_ids, questions)
+            train_loss = compute_loss(samples, labels, desc=desc)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
             optimizer.zero_grad()
@@ -234,9 +237,9 @@ def main(train_name, train_split, val_name, val_split, task, desc
 
 if __name__ == "__main__":
     '''
-    imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test
-    food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation
-    vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa
+    imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test --desc tags
+    food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation --desc tags
+    vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa --desc captions
     '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
@@ -265,9 +268,9 @@ if __name__ == "__main__":
                         help='Type of dataset?')
     parser.add_argument('--desc',
                         type=str,
-                        nargs='+',
+                        default="captions",
                         choices=["tags", "attributes", "captions"],
-                        help='Which vision modules to train')
+                        help='Which type of description to include in prompt and to train')
     args = parser.parse_args()
     train_name, train_split, val_split = args.train_dataset, args.train_split, args.val_split
     val_name = args.val_dataset
