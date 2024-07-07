@@ -32,7 +32,7 @@ llm_model = AutoModelForCausalLM.from_pretrained(
 tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     num_inputs = bsz * k
     #inputs, all_labels = [], [] 
@@ -207,6 +207,7 @@ def main(train_name, train_split, val_name, val_split, task, desc,
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
             optimizer.zero_grad()
+            train_loss.requires_grad = True
             train_loss.backward()
             optimizer.step()
             with torch.no_grad():
