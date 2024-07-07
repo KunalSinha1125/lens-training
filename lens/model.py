@@ -157,7 +157,7 @@ class Lens(nn.Module):
         num_captions: int = 10,
         return_tags: bool = False,
         return_attributes: bool = False,
-        return_global_caption: bool = True,
+        return_global_caption: bool = False,
         return_intensive_captions: bool = False,
         return_prompt: bool = False,
     ):
