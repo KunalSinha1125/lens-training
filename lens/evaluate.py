@@ -133,6 +133,7 @@ def main():
     processor = LensProcessor()
     ds_name = "HuggingFaceM4/VQAv2"
     ds_raw = load_dataset(ds_name, split="train", streaming=True, cache_dir=CACHE_DIR)
+    ds_raw = ds_raw.shuffle(seed=0, buffer_size=10000)
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
