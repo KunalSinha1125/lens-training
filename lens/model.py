@@ -182,19 +182,19 @@ class Lens(nn.Module):
                 max_length=max_length,
                 min_length=min_length,
             )
-        #if return_intensive_captions:
-        #    samples = self.forward_intensive_caption(
-        #        samples,
-        #        max_length=max_length,
-        #        min_length=min_length,
-        #        top_k=top_k,
-        #        num_captions=num_captions,
-        #    )
+        if return_intensive_captions:
+            samples = self.forward_intensive_caption(
+                samples,
+                max_length=max_length,
+                min_length=min_length,
+                top_k=top_k,
+                num_captions=num_captions,
+            )
 
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "captions_only_vqa"
+            mode = "intensive_captions_only_vqa"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -317,13 +317,13 @@ class Lens(nn.Module):
             input_ids=input_ids,
             max_length=max_length,
             min_length=min_length,
-            #do_sample=True,
-            #top_p=1,
-            #top_k=top_k,
-            #repetition_penalty=1,
+            do_sample=True,
+            top_p=1,
+            top_k=top_k,
+            repetition_penalty=1,
             num_beams=num_captions,
             num_return_sequences=num_captions,
-            #output_hidden_states=True,
+            output_hidden_states=True,
             output_scores=True,
             return_dict_in_generate=True
         )
@@ -349,7 +349,7 @@ class Lens(nn.Module):
         samples: dict,
         mode: str = "all",  # vqa or vision or hm or or all
     ):
-        num_samples = len(samples["tags"]) if "tags" in samples else len(samples["captions"])
+        num_samples = len(samples["tags"]) if "tags" in samples else len(samples["intensive_captions"])
         prompts = []
         for idx in range(num_samples):
             prompt = create_prompt_sample(samples, idx, mode=mode)
