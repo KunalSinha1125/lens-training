@@ -1,4 +1,4 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, T5ForConditionalGeneration, T5Tokenizer
 from model import Lens, LensDataset, LensProcessor, CACHE_DIR
 import torch
 from datasets import Dataset, load_dataset
@@ -139,10 +139,10 @@ def main():
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
     llm_name = "google/flan-t5-xxl"
-    llm_model = AutoModelForCausalLM.from_pretrained(
+    llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
-    tokenizer = AutoTokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
+    tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, data_size, batch_size)
