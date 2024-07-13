@@ -26,10 +26,11 @@ print(torch.cuda.mem_get_info()[0] / 1e9)
 lens = Lens()
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
+llm_name = "google/flan-t5-xxl"
 llm_model = AutoModelForCausalLM.from_pretrained(
-    "microsoft/phi-2", trust_remote_code=True, 
+    llm_name, trust_remote_code=True, 
     cache_dir=CACHE_DIR).to(device)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2", trust_remote_code=True, cache_dir=CACHE_DIR)
+tokenizer = AutoTokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
