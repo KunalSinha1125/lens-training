@@ -98,6 +98,7 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer,
         else:
             correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
         print(correct, total)
+        import pdb; pdb.set_trace()
         print(correct_by_type)
     print(f"Final accuracy: {correct/total}")
 
