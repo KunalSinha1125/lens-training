@@ -154,7 +154,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 2,
         questions = [],
-        num_captions: int = 10,
+        num_captions: int = 40,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
