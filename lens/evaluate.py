@@ -58,28 +58,31 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
     #pred = tokenizer.decode(outputs)
     #return (pred == labels[0])
 
-def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, question_types=None, correct_by_type={}):
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, llm_name, question_types=None, correct_by_type={}):
+    #tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
     model_inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
     max_new_tokens = max([len(prompt) for prompt in prompts]) + 100
     output = llm_model.generate(**model_inputs, max_new_tokens=max_new_tokens)
-    generations = tokenizer.batch_decode(output)
-    preds = np.array([gen.split("\"")[-2].lower().replace(".", "") for gen in generations])
-    correct = (preds == np.array(groundtruths)).sum()
+    generations = tokenizer.batch_decode(output, skip_special_tokens=True)
+    if "phi" in llm_name:
+        generations = [gen.split("\"")[-2].lower().replace(".", "") for gen in generations]
+    else:
+        generations = [gen.strip().lower() for gen in generations]
+    correct = (np.array(generations) == np.array(groundtruths)).sum()
     if question_types:
         for i, typ in enumerate(question_types):
             if typ not in correct_by_type:
                 correct_by_type[typ] = [0, 0]
-            correct_by_type[typ][0] += (preds[i] == groundtruths[i])
+            correct_by_type[typ][0] += (generations[i] == groundtruths[i])
             correct_by_type[typ][1] += 1
     print("Prompts: ", prompts)
-    print("Predictions: ", preds)
+    print("Predictions: ", generations)
     print("Groundtruth: ", groundtruths)
     print("Correctness: ", correct)
     return correct
 
-def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, 
+def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,
                       data_size=1000, batch_size=8, task="vqa"):
     correct, total = 0, 0
     correct_by_type = {}
@@ -89,16 +92,18 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer,
         with torch.no_grad():
             samples = lens(
                 clip_image, blip_image, blip_input_ids,
-                return_intensive_captions=True, return_prompt=True, 
+                return_attributes=True, return_intensive_captions=True, return_prompt=True, 
                 questions=questions
             )
         total += batch_size
         if task == "vqa":
-            correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer, question_types, correct_by_type)
+            correct += compute_vqa_acc(
+                samples["prompts"], labels, llm_model, tokenizer, 
+                llm_name, question_types, correct_by_type
+            )
         else:
             correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
         print(correct, total)
-        import pdb; pdb.set_trace()
         print(correct_by_type)
     print(f"Final accuracy: {correct/total}")
 
@@ -138,13 +143,13 @@ def main():
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "google/flan-t5-xxl"
+    llm_name = "google/flan-t5-xl"
     llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
     tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)
-    evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, data_size, batch_size)
+    evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
 main()

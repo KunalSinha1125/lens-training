@@ -56,33 +56,33 @@ class Lens(nn.Module):
             self.clip_model = self.load_clip_model(self.clip_name, self.device)
             print("After CLIP model")
             # Load weights
-            #huggingface_hub.hf_hub_download(
-            #    repo_id="llm-lens/attributes",
-            #    filename=attributes_weights,
-            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
-            #)
-            print("Before tags download")
             huggingface_hub.hf_hub_download(
-                repo_id="llm-lens/tags",
-                filename=tags_weights,
+                repo_id="llm-lens/attributes",
+                filename=attributes_weights,
                 local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
             )
-            print("After tags download")
+            #print("Before tags download")
+            #huggingface_hub.hf_hub_download(
+            #    repo_id="llm-lens/tags",
+            #    filename=tags_weights,
+            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
+            #)
+            #print("After tags download")
 
-            #self.attributes_weights = torch.load(
-            #    str(
-            #        Path(Path(__file__).resolve().parent)
-            #        / f"weights/{attributes_weights}"
-            #    ),
-            #    map_location=self.device,
-            #).float()
-            self.tags_weights = torch.load(
-                str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+            self.attributes_weights = torch.load(
+                str(
+                    Path(Path(__file__).resolve().parent)
+                    / f"weights/{attributes_weights}"
+                ),
                 map_location=self.device,
             ).float()
+            #self.tags_weights = torch.load(
+            #    str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
+            #    map_location=self.device,
+            #).float()
             # Load Vocabularies
             #print("Before vocab tags")
-            self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags, cache_dir=CACHE_DIR)["prompt_descriptions"])
+            #self.vocab_tags = np.array(load_dataset(vocab_tags, split=split_tags, cache_dir=CACHE_DIR)["prompt_descriptions"])
             #print("After vocab tags")
             #tags_indices = random.sample(list(range(len(self.vocab_tags))), num_total_tags)
             #self.tags_weights = self.tags_weights[:, torch.tensor(tags_indices).to(device)]
@@ -93,11 +93,11 @@ class Lens(nn.Module):
             #token_len = self.tags_tokens.argmin(dim=-1).max().item()
             #self.tags_tokens = self.tags_tokens[:, :token_len]
             #self.clip_model.context_length = token_len
-            #self.vocab_attributes = flatten(
-            #    load_dataset(vocab_attributes, split=split_attributes)[
-            #        "prompt_descriptions"
-            #    ]
-            #)
+            self.vocab_attributes = flatten(
+                load_dataset(vocab_attributes, split=split_attributes)[
+                    "prompt_descriptions"
+                ]
+            )
 
         if self.blip_name is not None:
             self.blip_model = self.load_caption_model(
@@ -148,13 +148,13 @@ class Lens(nn.Module):
         blip_image=None,
         blip_input_ids=None,
         num_tags: int = 10,
-        num_attributes: int = 50,
+        num_attributes: int = 5,
         contrastive_th: float = 0.2,
         max_length: int = 30,
         min_length: int = 10,
         top_k: int = 2,
         questions = [],
-        num_captions: int = 40,
+        num_captions: int = 5,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -171,10 +171,10 @@ class Lens(nn.Module):
             samples = self.forward_tags(
                 samples, num_tags=num_tags, contrastive_th=contrastive_th
             )
-        #if return_attributes:
-        #    samples = self.forward_attributes(
-        #        samples, num_attributes=num_attributes, contrastive_th=contrastive_th
-        #    )
+        if return_attributes:
+            samples = self.forward_attributes(
+                samples, num_attributes=num_attributes, contrastive_th=contrastive_th
+            )
         if return_global_caption:
             samples = self.forward_caption(
                 samples,
@@ -194,7 +194,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "intensive_captions_only_vqa"
+            mode = "attributes_and_captions"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -306,7 +306,7 @@ class Lens(nn.Module):
         self,
         samples: dict,
         max_length: int = 30,
-        min_length: int = 10,
+        min_length: int = 1,
         top_k: int = 50,
         num_captions: int = 100,
     ):
