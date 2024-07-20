@@ -60,6 +60,7 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
 
     lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
     lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
+    import pdb; pdb.set_trace()
     with torch.autocast("cuda"):
         with torch.no_grad():
             lsr_logits = llm_model(
@@ -72,10 +73,12 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     continuation_length = repeat_answer_tok.shape[-1]
     lsr_logits = lsr_logits[:, -continuation_length:]
     lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
+    import pdb; pdb.set_trace()
     lm_likelihood , lm_perplexity = compute_perplexity(lsr_logits, lsr_labels, bsz, k, gamma)
     return lm_likelihood, lm_perplexity, lsr_input_ids
 
 def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
+    import pdb; pdb.set_trace()
     token_loss = F.cross_entropy(
         logits.reshape(-1, logits.shape[-1]), 
         labels.view(-1),
@@ -109,7 +112,7 @@ def compute_captions_likelihood(samples, gamma=1.0):
     bsz, k = np.array(samples["intensive_captions"]).shape
     captions_logits = samples["intensive_captions_logits"]
     captions_labels = torch.ones(captions_logits.shape)
-    return compute_perplexity(logits, labels, bsz, k, gamma)
+    return compute_perplexity(captions_logits, captions_labels, bsz, k, gamma)
 
 def compute_tags_likelihood(samples, gamma=1.0):
     bsz, k = np.array(samples["tags"]).shape
@@ -118,13 +121,16 @@ def compute_tags_likelihood(samples, gamma=1.0):
     return tags_likelihood, tags_scores
 
 def compute_loss(samples, labels, table_name=None, desc="tags"):
-    tags_likelihood, tags_scores = compute_tags_likelihood(samples, desc=desc)
+    if desc == "tags":
+        desc_likelihood, desc_scores = compute_tags_likelihood(samples)
+    #elif desc == "intensive_captions":
+        #desc_likelihood, desc_scores = compute_captions_likelihood(samples)
     with torch.no_grad():
         llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood(samples, labels, desc=desc)
     if table_name:
         table_data = {
-            "Tags likelihood": tags_likelihood[0],
-            "Tags scores": tags_scores[0],
+            "Description likelihood": desc_likelihood[0],
+            "Description scores": desc_scores[0],
             "LM likelihood": llm_likelihood[0],
             "LM perplexity": llm_perplexity[0],
         }
@@ -139,7 +145,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
     kl_penalty = F.kl_div(
-        tags_likelihood.log(), llm_likelihood.log(),
+        desc_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
     print("Loss: ", kl_penalty.item())

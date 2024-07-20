@@ -341,7 +341,6 @@ class Lens(nn.Module):
         samples["intensive_captions"] = captions_text
         samples["intensive_captions_output"] = captions_output
         samples["intensive_captions_logits"] = captions_logits
-        import pdb; pdb.set_trace()
         return samples
 
     # This function could be more efficient
