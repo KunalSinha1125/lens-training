@@ -63,10 +63,13 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     with torch.autocast("cuda"):
         with torch.no_grad():
             lsr_logits = llm_model(
-                input_ids=lsr_input_ids[:, :-1],
-                attention_mask=lsr_attention_mask[:, :-1],
+                input_ids=reader_tok[:, :-1],
+                attention_mask=reader_mask[:, :-1],
+                decoder_input_ids=repeat_answer_tok[:, :-1],
+                decoder_attention_mask=repeat_answer_mask[:, :-1]
                 use_cache=False,
             ).logits
+    import pdb; pdb.set_trace()
 
     # compute perplexity of question
     continuation_length = repeat_answer_tok.shape[-1]
