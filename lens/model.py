@@ -148,13 +148,13 @@ class Lens(nn.Module):
         blip_image=None,
         blip_input_ids=None,
         num_tags: int = 10,
-        num_attributes: int = 5,
+        num_attributes: int = 1,
         contrastive_th: float = 0.2,
         max_length: int = 30,
         min_length: int = 10,
         top_k: int = 2,
         questions = [],
-        num_captions: int = 5,
+        num_captions: int = 10,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -194,7 +194,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "attributes_and_captions"
+            mode = "vqa_single"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -341,6 +341,7 @@ class Lens(nn.Module):
         samples["intensive_captions"] = captions_text
         samples["intensive_captions_output"] = captions_output
         samples["intensive_captions_logits"] = captions_logits
+        import pdb; pdb.set_trace()
         return samples
 
     # This function could be more efficient
@@ -349,10 +350,12 @@ class Lens(nn.Module):
         samples: dict,
         mode: str = "all",  # vqa or vision or hm or or all
     ):
-        num_samples = len(samples["tags"]) if "tags" in samples else len(samples["intensive_captions"])
+        num_samples = samples["blip_image"].shape[0]
+        if "intensive_captions" in samples:
+            num_samples = len(samples["intensive_captions"])
         prompts = []
         for idx in range(num_samples):
-            prompt = create_prompt_sample(samples, idx, mode=mode)
+            prompt = create_prompt_sample(samples, idx, desc_idx=0, mode=mode)
 
             prompts.append(prompt)
         samples["prompts"] = prompts

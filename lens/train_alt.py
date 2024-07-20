@@ -2,7 +2,7 @@ from model import Lens, LensDataset, LensProcessor, CACHE_DIR
 import requests
 from PIL import Image
 from scipy.special import rel_entr
-from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import Trainer, TrainingArguments, CLIPProcessor, CLIPModel, AutoModelForCausalLM, AutoTokenizer, T5ForConditionalGeneration, T5Tokenizer
 import torch
 import numpy as np
 from utils import create_prompt_sample, create_dataloader, create_sampler
@@ -26,11 +26,11 @@ print(torch.cuda.mem_get_info()[0] / 1e9)
 lens = Lens()
 processor = LensProcessor()
 print(torch.cuda.mem_get_info()[0] / 1e9)
-llm_name = "google/flan-t5-xxl"
-llm_model = AutoModelForCausalLM.from_pretrained(
+llm_name = "google/flan-t5-xl"
+llm_model = T5ForConditionalGeneration.from_pretrained(
     llm_name, trust_remote_code=True, 
     cache_dir=CACHE_DIR).to(device)
-tokenizer = AutoTokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
+tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
 def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
@@ -41,7 +41,7 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     for i in range(bsz):
         for j in range(k):
             prompt = create_prompt_sample(
-                samples, i, desc_idx=j, mode=f"{desc}_only_vqa_single",
+                samples, i, desc_idx=j, mode=f"vqa_single",
             )
             prompts.append(prompt)
             #inputs.append(f"{prompt} {labels[i]}")
@@ -158,6 +158,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         reduction="batchmean", log_target=True
     )
     print("Loss: ", kl_penalty.item())
+    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(clip_image, blip_image, blip_input_ids, questions):
@@ -168,8 +169,8 @@ def forward(clip_image, blip_image, blip_input_ids, questions):
         blip_input_ids,
         return_tags=False,
         return_attributes=False,
-        return_intensive_captions=False,
-        return_global_caption=True,
+        return_intensive_captions=True,
+        return_global_caption=False,
         return_prompt=True,
         questions=questions
     )
@@ -242,12 +243,13 @@ if __name__ == "__main__":
     imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test --desc tags
     food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation --desc tags
     vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa --desc captions
+    vqav2: python3 train_alt.py --train_dataset ReplugLens/VQAv2 --train_split train --val_split minival_validation --task vqa --desc intensive_captions
     '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--train_dataset',
                         default="cifar10",
-                        choices=["cifar10", "imagenet-1k", "food101", "HuggingFaceM4/VQAv2"],
+                        choices=["cifar10", "imagenet-1k", "food101", "HuggingFaceM4/VQAv2", "ReplugLens/VQAv2"],
                         type=str,
                         help='Name of train dataset?')
     parser.add_argument('--train_split',

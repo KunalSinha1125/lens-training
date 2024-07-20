@@ -113,22 +113,28 @@ def create_prompt_sample(
         question = samples[question_col][idx]
 
     if mode == "vqa":
-        prompt += "Question:"
-        prompt += question
-        prompt += "\nObservations:"
+        prompt += "Captions:"
         prompt += ".".join(
             samples[intensive_captions_col][idx][:num_intensive_captions]
         )
-        #prompt += "\nQuestion:"
-        #prompt += question
+        prompt += "\nQuestion:"
+        prompt += question
         prompt += "\nShort Answer:"
 
+    elif mode == "vqa_single":
+        prompt += f"Caption: {samples[intensive_captions_col][idx][desc_idx]}"
+        prompt += f"\nQuestion: {question}"
+        prompt += "\nShort Answer:"
+
+    elif mode == "baseline":
+        prompt = f"Question: {question}\nShort Answer:"
+
     elif mode == "attributes_and_captions":
-        prompt += f"Question: {question}"
-        attributes = "\n".join(samples[attributes_col][idx])
-        prompt += f"\nAttributes:\n{attributes}"
-        captions = "\n".join(samples[intensive_captions_col][idx])
-        prompt += f"\nCaptions:\n{captions}"
+        attributes = ". ".join(samples[attributes_col][idx])
+        prompt += f"Attributes: {attributes}"
+        captions = ". ".join(samples[intensive_captions_col][idx])
+        prompt += f"\nCaptions: {captions}"
+        prompt += f"\nQuestion: {question}"
         prompt += "\nShort Answer: "
 
     elif mode == "vision":
@@ -208,8 +214,7 @@ def create_prompt_sample(
 
     elif mode == "intensive_captions_only_vqa":
         captions = samples[intensive_captions_col][idx]
-        captions = ".".join(captions)
-        
+        captions = ".".join(captions) 
         #prompt = f"\"Instruct: Answer the question based on the image captions.\nCaptions:\n{captions}\nQuestion: {question} Answer in one word, phrase, or number.\nOutput: \""  
     
     elif mode == "attributes_only":

@@ -76,9 +76,8 @@ def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, llm_name, quest
                 correct_by_type[typ] = [0, 0]
             correct_by_type[typ][0] += (generations[i] == groundtruths[i])
             correct_by_type[typ][1] += 1
-    print("Prompts: ", prompts)
-    print("Predictions: ", generations)
-    print("Groundtruth: ", groundtruths)
+    for i in range(len(prompts)):
+        print(prompts[i] + generations[i] + f"(groundtruth: {groundtruths[i]})")
     print("Correctness: ", correct)
     return correct
 
@@ -92,7 +91,7 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
         with torch.no_grad():
             samples = lens(
                 clip_image, blip_image, blip_input_ids,
-                return_attributes=True, return_intensive_captions=True, return_prompt=True, 
+                return_attributes=False, return_intensive_captions=False, return_prompt=True, 
                 questions=questions
             )
         total += batch_size
@@ -137,13 +136,13 @@ def generate_test(llm_model, tokenizer):
 def main():
     lens = Lens()
     processor = LensProcessor()
-    ds_name = "HuggingFaceM4/VQAv2"
-    ds_raw = load_dataset(ds_name, split="train", streaming=True, cache_dir=CACHE_DIR)
+    ds_name = "ReplugLens/VQAv2"
+    ds_raw = load_dataset(ds_name, split="minival_validation", streaming=True, cache_dir=CACHE_DIR)
     ds_raw = ds_raw.shuffle(seed=0, buffer_size=10000)
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "google/flan-t5-xl"
+    llm_name = "google/flan-t5-xxl"
     llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
@@ -152,4 +151,4 @@ def main():
     #interactive_test(llm_model, tokenizer)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
-main()
+#main()
