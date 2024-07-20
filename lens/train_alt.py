@@ -227,7 +227,7 @@ if __name__ == "__main__":
     '''
     imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test --desc tags
     food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation --desc tags
-    vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa --desc captions
+    vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa --desc intensive_captions
     vqav2: python3 train_alt.py --train_dataset ReplugLens/VQAv2 --train_split train --val_split minival_validation --task vqa --desc intensive_captions
     '''
     parser = ArgumentParser(description='Train',
@@ -258,7 +258,7 @@ if __name__ == "__main__":
     parser.add_argument('--desc',
                         type=str,
                         default="captions",
-                        choices=["tags", "attributes", "captions"],
+                        choices=["tags", "attributes", "captions", "intensive_captions"],
                         help='Which type of description to include in prompt and to train')
     args = parser.parse_args()
     train_name, train_split, val_split = args.train_dataset, args.train_split, args.val_split
