@@ -44,19 +44,8 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
                 samples, i, desc_idx=j, mode=f"vqa_single",
             )
             prompts.append(prompt)
-            #inputs.append(f"{prompt} {labels[i]}")
-            #all_labels.append(labels[i])
     # Tokenize full inputs
     tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
-    #lsr_tokens = tokenizer(inputs, return_tensors="pt", padding=True).to(device)
-    #lsr_input_ids, lsr_attention_mask = lsr_tokens.input_ids, lsr_tokens.attention_mask
-    #lsr_input_ids = torch.cat([lsr_input_ids, torch.full((num_inputs, 1), tokenizer.eos_token_id).to(device)], dim=-1)
-    #lsr_attention_mask = torch.cat([lsr_attention_mask, torch.zeros((num_inputs, 1)).to(device)], dim=-1)
-    # Tokenize answers
-    #label_tokens = tokenizer(all_labels, return_tensors="pt").to(device)
-    #label_input_ids, label_attention_mask = label_tokens.input_ids, label_tokens.attention_mask
-    #input_len, label_len = lsr_input_ids.shape[-1], label_input_ids.shape[-1]
-
     tokenizer.padding_side = "left"
     prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True)
     tokenizer.padding_side = "right"
@@ -83,31 +72,21 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     continuation_length = repeat_answer_tok.shape[-1]
     lsr_logits = lsr_logits[:, -continuation_length:]
     lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
-    #vocab_size = lsr_logits.shape[-1]
-    #lsr_end_indices = (lsr_attention_mask).argmin(axis=1).squeeze()
-    #lsr_end_indices[lsr_end_indices == 0] = input_len
-    #lsr_labels = label_attention_mask
-    #TODO: optimize
-    #label_logits = torch.zeros((num_inputs, label_len, vocab_size)).to(device)
-    #for i in range(num_inputs):
-    #    end = lsr_end_indices[i] + 1
-    #    start = end - label_len
-    #    label_logits[i] = lsr_logits[i, start:end, :]
+    lm_likelihood , lm_perplexity = compute_perplexity(lsr_logits, lsr_labels, bsz, k, gamma)
+    return lm_likelihood, lm_perplexity, lsr_input_ids
+
+def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
     token_loss = F.cross_entropy(
-        lsr_logits.reshape(-1, lsr_logits.shape[-1]),
-        #label_logits.reshape(-1, vocab_size),
-        #label_attention_mask.view(-1),
-        lsr_labels.view(-1),
+        logits.reshape(-1, logits.shape[-1]), 
+        labels.view(-1),
         ignore_index=IGNORE_INDEX,
         reduction='none',
     )
-
     scores = token_loss.view(bsz, k, -1)
-    #z = (label_attention_mask.view(bsz, k, -1) > -1).sum(dim=-1)
-    z = (lsr_labels.view(bsz, k, -1) > -1).sum(dim=-1)
+    z = (labels.view(bsz, k, -1) > -1).sum(dim=-1)
     lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
     lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
-    return lm_likelihood, lm_perplexity, lsr_input_ids
+    return lm_likelihood, lm_perplexity
 
 def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
@@ -126,9 +105,15 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     print(torch.cuda.mem_get_info()[0] / 1e9)
     return lm_likelihood, lm_perplexity
 
-def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
-    bsz, k = np.array(samples[desc]).shape
-    tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
+def compute_captions_likelihood(samples, gamma=1.0):
+    bsz, k = np.array(samples["intensive_captions"]).shape
+    captions_logits = samples["intensive_captions_logits"]
+    captions_labels = torch.ones(captions_logits.shape)
+    return compute_perplexity(logits, labels, bsz, k, gamma)
+
+def compute_tags_likelihood(samples, gamma=1.0):
+    bsz, k = np.array(samples["tags"]).shape
+    tags_scores = samples["top_scores_tags"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
     return tags_likelihood, tags_scores
 
