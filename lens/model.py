@@ -52,16 +52,16 @@ class Lens(nn.Module):
         self.device = device
         self.clip_name = clip_name
         self.blip_name = blip_name
-        if self.clip_name is not None:
-            print("Before CLIP model")
-            self.clip_model = self.load_clip_model(self.clip_name, self.device)
-            print("After CLIP model")
+        #if self.clip_name is not None:
+            #print("Before CLIP model")
+            #self.clip_model = self.load_clip_model(self.clip_name, self.device)
+            #print("After CLIP model")
             # Load weights
-            huggingface_hub.hf_hub_download(
-                repo_id="llm-lens/attributes",
-                filename=attributes_weights,
-                local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
-            )
+            #huggingface_hub.hf_hub_download(
+            #    repo_id="llm-lens/attributes",
+            #    filename=attributes_weights,
+            #    local_dir=str(Path(Path(__file__).resolve().parent) / "weights"),
+            #)
             #print("Before tags download")
             #huggingface_hub.hf_hub_download(
             #    repo_id="llm-lens/tags",
@@ -70,13 +70,13 @@ class Lens(nn.Module):
             #)
             #print("After tags download")
 
-            self.attributes_weights = torch.load(
-                str(
-                    Path(Path(__file__).resolve().parent)
-                    / f"weights/{attributes_weights}"
-                ),
-                map_location=self.device,
-            ).float()
+            #self.attributes_weights = torch.load(
+            #    str(
+            #        Path(Path(__file__).resolve().parent)
+            #        / f"weights/{attributes_weights}"
+            #    ),
+            #    map_location=self.device,
+            #).float()
             #self.tags_weights = torch.load(
             #    str(Path(Path(__file__).resolve().parent) / f"weights/{tags_weights}"),
             #    map_location=self.device,
@@ -94,16 +94,18 @@ class Lens(nn.Module):
             #token_len = self.tags_tokens.argmin(dim=-1).max().item()
             #self.tags_tokens = self.tags_tokens[:, :token_len]
             #self.clip_model.context_length = token_len
-            self.vocab_attributes = flatten(
-                load_dataset(vocab_attributes, split=split_attributes)[
-                    "prompt_descriptions"
-                ]
-            )
+            #self.vocab_attributes = flatten(
+            #    load_dataset(vocab_attributes, split=split_attributes)[
+            #        "prompt_descriptions"
+            #    ]
+            #)
 
         if self.blip_name is not None:
+            print("Before blip2: ", torch.cuda.mem_get_info()[0] / 1e9)
             self.blip_model = self.load_caption_model(
                 self.blip_name, load_8bit, self.device
             )
+            print("Before blip2 processor: ", torch.cuda.mem_get_info()[0] / 1e9)
             self.blip_processor = Blip2Processor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
 
     def load_caption_model(
@@ -154,7 +156,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 10,
+        num_captions: int = 1,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -194,7 +196,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "vqa_single"
+            mode = "vqa"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -312,50 +314,28 @@ class Lens(nn.Module):
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
+        bsz, _ = input_ids.shape
         captions_output = self.blip_model.generate(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
+            pixel_values=pixel_values.repeat_interleave(num_captions, dim=0),
+            input_ids=input_ids.repeat_interleave(num_captions, dim=0),
             max_length=max_length,
             min_length=min_length,
-            top_p=1,
-            top_k=top_k,
-            repetition_penalty=1,
-            num_beams=num_captions,
-            num_return_sequences=num_captions,
-            output_hidden_states=True,
+            #num_beams=num_captions,
+            temperature=1.5,
+            do_sample=True,
             output_scores=True,
-            return_dict_in_generate=True
+            return_dict_in_generate=True,
         )
-        # sequences, scores = captions_output.sequences, captions_output.scores
-        # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
+        sequences, scores = captions_output.sequences, captions_output.scores
+        import pdb; pdb.set_trace()
+        captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )
-        captions_text = [caption[12:].strip() for caption in captions_text]
-        captions_text = [
-            captions_text[i : i + num_captions]
-            for i in range(0, len(captions_text), num_captions)
-        ]
-        samples["intensive_captions"] = captions_text
-        # samples["intensive_captions_logits"] = captions_logits
-
-        captions_logits = self.blip_model(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
-            max_length=max_length,
-            min_length=min_length,
-            top_p=1,
-            top_k=top_k,
-            repetition_penalty=1,
-            num_beams=num_captions,
-            num_return_sequences=num_captions,
-            output_hidden_states=True,
-            output_scores=True,
-            return_dict_in_generate=True
-        ).logits
-        samples["intensive_captions_logits"] = captions_logits
-
+        captions_text = np.array([cap.strip() for cap in captions_text])
+        samples["intensive_captions"] = captions_text.reshape(bsz, -1)
+        samples["intensive_captions_logits"] = captions_logits.reshape(bsz, -1)
         return samples
 
     # This function could be more efficient
@@ -472,7 +452,7 @@ class LensProcessor:
     def __init__(
         self,
         clip_name: str = "hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "Salesforce/blip-image-captioning-large",
+        blip_name: str = "Salesforce/blip2-opt-2.7b",
     ):
         print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)

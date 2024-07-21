@@ -91,7 +91,7 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
         with torch.no_grad():
             samples = lens(
                 clip_image, blip_image, blip_input_ids,
-                return_attributes=False, return_intensive_captions=False, return_prompt=True, 
+                return_attributes=False, return_intensive_captions=True, return_prompt=True, 
                 questions=questions
             )
         total += batch_size
@@ -143,12 +143,15 @@ def main():
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
     llm_name = "google/flan-t5-small"
+    print("Before LLM: ", torch.cuda.mem_get_info()[0] / 1e9)
     llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
+    print("Before tokenizer: ", torch.cuda.mem_get_info()[0] / 1e9)
     tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)
+    print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
 main()
