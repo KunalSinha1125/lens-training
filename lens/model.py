@@ -9,6 +9,7 @@ import torch.nn as nn
 from datasets import Dataset, IterableDataset, load_dataset
 from transformers import (
     AutoProcessor,
+    BlipForConditionalGeneration,
     Blip2ForConditionalGeneration,
     Blip2Processor,
     CLIPModel,
@@ -35,7 +36,7 @@ class Lens(nn.Module):
     def __init__(
         self,
         clip_name: str = "hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "Salesforce/blip2-opt-2.7b",
+        blip_name: str = "Salesforce/blip-image-captioning-large",
         attributes_weights: str = "zw_attributes_laion_ViT_H_14_2B_descriptors_text_davinci_003_full.pt",
         tags_weights: str = "zw_tags_laion_ViT_H_14_2B_vocab_lens.pt",
         vocab_attributes: str = "llm-lens/descriptors-text-davinci-003",
@@ -106,7 +107,7 @@ class Lens(nn.Module):
                 self.blip_name, load_8bit, self.device
             )
             print("Before blip2 processor: ", torch.cuda.mem_get_info()[0] / 1e9)
-            self.blip_processor = Blip2Processor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
+            self.blip_processor = AutoProcessor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
 
     def load_caption_model(
         self, model_name: str, load_8bit: bool, device: torch.device
@@ -121,10 +122,10 @@ class Lens(nn.Module):
                 cache_dir=CACHE_DIR
             )
         else:
-            model = Blip2ForConditionalGeneration.from_pretrained(
+            model = BlipForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
-                config="blip2_config.json",
+                config="blip_config.json",
                 cache_dir=CACHE_DIR
             )
         model = model.train()
@@ -317,25 +318,24 @@ class Lens(nn.Module):
         input_ids = samples["blip_input_ids"].to(self.device)
         bsz, _ = input_ids.shape
         captions_output = self.blip_model.generate(
-            pixel_values=pixel_values.repeat_interleave(num_captions, dim=0),
-            input_ids=input_ids.repeat_interleave(num_captions, dim=0),
+            pixel_values=pixel_values,
+            input_ids=input_ids,
             max_length=max_length,
             min_length=min_length,
-            #num_beams=num_captions,
-            #temperature=1.5,
+            num_beams=num_captions,
+            num_return_sequences=num_captions,
             output_scores=True,
             return_dict_in_generate=True,
         )
-        sequences, scores = captions_output.sequences, captions_output.scores
-        captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
+        # sequences, scores = captions_output.sequences, captions_output.scores
+        # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )
         captions_text = np.array([cap.strip() for cap in captions_text]).reshape(bsz, -1)
         samples["intensive_captions"] = captions_text
-        samples["intensive_captions_logits"] = captions_logits
-        import pdb; pdb.set_trace()
+        samples["top_scores_intensive_captions"] = captions_outputs.sequences_scores
         return samples
 
     # This function could be more efficient
@@ -452,12 +452,12 @@ class LensProcessor:
     def __init__(
         self,
         clip_name: str = "hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "Salesforce/blip2-opt-2.7b",
+        blip_name: str = "Salesforce/blip-image-captioning-large",
     ):
         print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)
         print("After CLIP processor")
-        self.blip_processor = Blip2Processor.from_pretrained(blip_name, cache_dir=CACHE_DIR)
+        self.blip_processor = AutoProcessor.from_pretrained(blip_name, cache_dir=CACHE_DIR)
 
     def load_clip_transform(self, model_name: str):
         if "openai" in model_name:

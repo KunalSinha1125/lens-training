@@ -108,27 +108,23 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     print(torch.cuda.mem_get_info()[0] / 1e9)
     return lm_likelihood, lm_perplexity
 
-def compute_captions_likelihood(samples, gamma=1.0):
-    bsz, k = np.array(samples["intensive_captions"]).shape
-    logits = samples["intensive_captions_logits"]
-    import pdb; pdb.set_trace()
-    logprobs = logits.log_softmax(dim=-1)
-    nll = -logprobs.mean(dim=-1)
-    perplexity = torch.exp(-nll).reshape(bsz, k)
-    likelihood = torch.softmax(perplexity / gamma, dim=-1)
-    return likelihood, perplexity
+# def compute_captions_likelihood(samples, gamma=1.0):
+#     bsz, k = np.array(samples["intensive_captions"]).shape
+#     logits = samples["intensive_captions_logits"]
+#     logprobs = logits.log_softmax(dim=-1)
+#     nll = -logprobs.mean(dim=-1)
+#     perplexity = torch.exp(-nll).reshape(bsz, k)
+#     likelihood = torch.softmax(perplexity / gamma, dim=-1)
+#     return likelihood, perplexity
 
-def compute_tags_likelihood(samples, gamma=1.0):
-    bsz, k = np.array(samples["tags"]).shape
-    tags_scores = samples["top_scores_tags"].reshape((bsz, k)).to(device)
+def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
+    bsz, k = np.array(samples[desc]).shape
+    tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
     return tags_likelihood, tags_scores
 
 def compute_loss(samples, labels, table_name=None, desc="tags"):
-    if desc == "tags":
-        desc_likelihood, desc_scores = compute_tags_likelihood(samples)
-    elif desc == "intensive_captions":
-        desc_likelihood, desc_scores = compute_captions_likelihood(samples)
+    desc_likelihood, desc_scores = compute_tags_likelihood(samples, desc=desc)
     with torch.no_grad():
         llm_likelihood, llm_perplexity = compute_llm_likelihood(samples, labels, desc=desc)
     if table_name:
