@@ -111,6 +111,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
 def compute_captions_likelihood(samples, gamma=1.0):
     bsz, k = np.array(samples["intensive_captions"]).shape
     logits = samples["intensive_captions_logits"]
+    import pdb; pdb.set_trace()
     logprobs = logits.log_softmax(dim=-1)
     nll = -logprobs.mean(dim=-1)
     perplexity = torch.exp(-nll).reshape(bsz, k)
@@ -184,10 +185,11 @@ def main(train_name, train_split, val_name, val_split, task, desc,
     val_ds = LensDataset(val_ds_raw, processor, val_name)
     val_dataloader = DataLoader(val_ds, batch_size=batch_size)
     print("Created val loader")
-    optimizer = torch.optim.Adam(lens.clip_model.parameters(), lr=lr)
-    print("Before prepare")
-    lens.clip_model = accelerator.prepare(lens.clip_model)
-    print("After prepare")
+    params = lens.blip_model.parameters() if desc == "intensive_captions" else lens.clip_model.parameters()
+    optimizer = torch.optim.Adam(params, lr=lr)
+    #print("Before prepare")
+    #lens.clip_model = accelerator.prepare(lens.clip_model)
+    #print("After prepare")
 
     for epoch in range(num_epochs):
         #Compute train loss

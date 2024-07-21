@@ -154,4 +154,4 @@ def main():
     print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
-main()
+#main()

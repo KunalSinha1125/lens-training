@@ -124,6 +124,7 @@ class Lens(nn.Module):
             model = Blip2ForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
+                config="blip2_config.json",
                 cache_dir=CACHE_DIR
             )
         model = model.train()
@@ -156,7 +157,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 1,
+        num_captions: int = 10,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -321,21 +322,20 @@ class Lens(nn.Module):
             max_length=max_length,
             min_length=min_length,
             #num_beams=num_captions,
-            temperature=1.5,
-            do_sample=True,
+            #temperature=1.5,
             output_scores=True,
             return_dict_in_generate=True,
         )
         sequences, scores = captions_output.sequences, captions_output.scores
-        import pdb; pdb.set_trace()
         captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )
-        captions_text = np.array([cap.strip() for cap in captions_text])
-        samples["intensive_captions"] = captions_text.reshape(bsz, -1)
-        samples["intensive_captions_logits"] = captions_logits.reshape(bsz, -1)
+        captions_text = np.array([cap.strip() for cap in captions_text]).reshape(bsz, -1)
+        samples["intensive_captions"] = captions_text
+        samples["intensive_captions_logits"] = captions_logits
+        import pdb; pdb.set_trace()
         return samples
 
     # This function could be more efficient
