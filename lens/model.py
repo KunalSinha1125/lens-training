@@ -9,7 +9,8 @@ import torch.nn as nn
 from datasets import Dataset, IterableDataset, load_dataset
 from transformers import (
     AutoProcessor,
-    BlipForConditionalGeneration,
+    Blip2ForConditionalGeneration,
+    Blip2Processor,
     CLIPModel,
     CLIPProcessor
 )
@@ -34,7 +35,7 @@ class Lens(nn.Module):
     def __init__(
         self,
         clip_name: str = "hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "Salesforce/blip-image-captioning-large",
+        blip_name: str = "Salesforce/blip2-opt-2.7b",
         attributes_weights: str = "zw_attributes_laion_ViT_H_14_2B_descriptors_text_davinci_003_full.pt",
         tags_weights: str = "zw_tags_laion_ViT_H_14_2B_vocab_lens.pt",
         vocab_attributes: str = "llm-lens/descriptors-text-davinci-003",
@@ -103,13 +104,13 @@ class Lens(nn.Module):
             self.blip_model = self.load_caption_model(
                 self.blip_name, load_8bit, self.device
             )
-            self.blip_processor = AutoProcessor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
+            self.blip_processor = Blip2Processor.from_pretrained(self.blip_name, cache_dir=CACHE_DIR)
 
     def load_caption_model(
         self, model_name: str, load_8bit: bool, device: torch.device
     ):
         if load_8bit:
-            model = Blip2ForConditionalGeneration.from_pretrained(
+            model = BlipForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
                 device_map={"": device},
@@ -121,7 +122,6 @@ class Lens(nn.Module):
             model = Blip2ForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
-                config="blip_config.json",
                 cache_dir=CACHE_DIR
             )
         model = model.train()
@@ -152,7 +152,7 @@ class Lens(nn.Module):
         contrastive_th: float = 0.2,
         max_length: int = 30,
         min_length: int = 10,
-        top_k: int = 2,
+        top_k: int = 1,
         questions = [],
         num_captions: int = 10,
         return_tags: bool = False,
@@ -312,7 +312,6 @@ class Lens(nn.Module):
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
-        import pdb; pdb.set_trace()
         captions_output = self.blip_model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
@@ -327,8 +326,8 @@ class Lens(nn.Module):
             output_scores=True,
             return_dict_in_generate=True
         )
-        sequences, scores = captions_output.sequences, captions_output.scores
-        captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
+        # sequences, scores = captions_output.sequences, captions_output.scores
+        # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
@@ -339,7 +338,24 @@ class Lens(nn.Module):
             for i in range(0, len(captions_text), num_captions)
         ]
         samples["intensive_captions"] = captions_text
+        # samples["intensive_captions_logits"] = captions_logits
+
+        captions_logits = self.blip_model(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            max_length=max_length,
+            min_length=min_length,
+            top_p=1,
+            top_k=top_k,
+            repetition_penalty=1,
+            num_beams=num_captions,
+            num_return_sequences=num_captions,
+            output_hidden_states=True,
+            output_scores=True,
+            return_dict_in_generate=True
+        ).logits
         samples["intensive_captions_logits"] = captions_logits
+
         return samples
 
     # This function could be more efficient
@@ -461,7 +477,7 @@ class LensProcessor:
         print("Before CLIP processor")
         self.clip_processor = self.load_clip_transform(clip_name)
         print("After CLIP processor")
-        self.blip_processor = AutoProcessor.from_pretrained(blip_name, cache_dir=CACHE_DIR)
+        self.blip_processor = Blip2Processor.from_pretrained(blip_name, cache_dir=CACHE_DIR)
 
     def load_clip_transform(self, model_name: str):
         if "openai" in model_name:
