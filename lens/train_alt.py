@@ -45,11 +45,11 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
             )
             prompts.append(prompt)
     # Tokenize full inputs
-    tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+    #tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
     tokenizer.padding_side = "left"
-    prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True)
+    prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
     tokenizer.padding_side = "right"
-    label_tokens = tokenizer(labels, return_tensors="pt", padding=True, add_special_tokens=True)
+    label_tokens = tokenizer(labels, return_tensors="pt", padding=True, add_special_tokens=True).to(device)
     reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
     answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
 
@@ -58,33 +58,30 @@ def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
     reader_tok = reader_tok.reshape(-1, reader_tok.shape[-1])
     reader_mask = reader_mask.reshape(-1, reader_mask.shape[-1])
 
-    lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
-    lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
-    import pdb; pdb.set_trace()
-    with torch.autocast("cuda"):
-        with torch.no_grad():
-            lsr_logits = llm_model(
-                input_ids=reader_tok[:, :-1],
-                attention_mask=reader_mask[:, :-1],
-                decoder_input_ids=repeat_answer_tok[:, :-1],
-                decoder_attention_mask=repeat_answer_mask[:, :-1]
-                use_cache=False,
-            ).logits
-    import pdb; pdb.set_trace()
-
+    #lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
+    #lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
+    #with torch.autocast("cuda"):
+    with torch.no_grad():
+        lsr_logits = llm_model(
+            input_ids=reader_tok,#[:, :-1],
+            attention_mask=reader_mask,#[:, :-1],
+            decoder_input_ids=repeat_answer_tok,
+            decoder_attention_mask=repeat_answer_mask,
+            use_cache=False,
+        ).logits
     # compute perplexity of question
-    continuation_length = repeat_answer_tok.shape[-1]
-    lsr_logits = lsr_logits[:, -continuation_length:]
+    #continuation_length = repeat_answer_tok.shape[-1]
+    #lsr_logits = lsr_logits[:, -continuation_length:]
     lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
-    import pdb; pdb.set_trace()
-    lm_likelihood , lm_perplexity = compute_perplexity(lsr_logits, lsr_labels, bsz, k, gamma)
-    return lm_likelihood, lm_perplexity, lsr_input_ids
+    lm_likelihood , lm_perplexity = compute_perplexity(
+        lsr_logits.reshape(-1, lsr_logits.shape[-1]), lsr_labels.view(-1), 
+        bsz, k, gamma
+    )
+    return lm_likelihood, lm_perplexity
 
 def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
-    import pdb; pdb.set_trace()
     token_loss = F.cross_entropy(
-        logits.reshape(-1, logits.shape[-1]), 
-        labels.view(-1),
+        logits, labels,
         ignore_index=IGNORE_INDEX,
         reduction='none',
     )
@@ -113,9 +110,12 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
 
 def compute_captions_likelihood(samples, gamma=1.0):
     bsz, k = np.array(samples["intensive_captions"]).shape
-    captions_logits = samples["intensive_captions_logits"]
-    captions_labels = torch.ones(captions_logits.shape)
-    return compute_perplexity(captions_logits, captions_labels, bsz, k, gamma)
+    logits = samples["intensive_captions_logits"]
+    logprobs = logits.log_softmax(dim=-1)
+    nll = -logprobs.mean(dim=-1)
+    perplexity = torch.exp(-nll).reshape(bsz, k)
+    likelihood = torch.softmax(perplexity / gamma, dim=-1)
+    return likelihood, perplexity
 
 def compute_tags_likelihood(samples, gamma=1.0):
     bsz, k = np.array(samples["tags"]).shape
@@ -126,10 +126,10 @@ def compute_tags_likelihood(samples, gamma=1.0):
 def compute_loss(samples, labels, table_name=None, desc="tags"):
     if desc == "tags":
         desc_likelihood, desc_scores = compute_tags_likelihood(samples)
-    #elif desc == "intensive_captions":
-        #desc_likelihood, desc_scores = compute_captions_likelihood(samples)
+    elif desc == "intensive_captions":
+        desc_likelihood, desc_scores = compute_captions_likelihood(samples)
     with torch.no_grad():
-        llm_likelihood, llm_perplexity, lsr_input_ids = compute_llm_likelihood(samples, labels, desc=desc)
+        llm_likelihood, llm_perplexity = compute_llm_likelihood(samples, labels, desc=desc)
     if table_name:
         table_data = {
             "Description likelihood": desc_likelihood[0],
@@ -141,10 +141,9 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         for k, v in table_data.items():
             table_data[k] = v.detach().to(dtype=torch.float16).cpu().numpy()[indices]
         table_data[desc] = np.array(samples[desc][0])[indices]
-        table_data["Prompt"] = np.array([
-            tokenizer.decode(lsr_input_ids[i]) for i in range(lsr_input_ids.shape[0])
-        ])[indices]
-        print(table_data["Prompt"][0])
+        #table_data["Prompt"] = np.array([
+        #    tokenizer.decode(lsr_input_ids[i]) for i in range(lsr_input_ids.shape[0])
+        #])[indices]
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
     kl_penalty = F.kl_div(
@@ -152,7 +151,6 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         reduction="batchmean", log_target=True
     )
     print("Loss: ", kl_penalty.item())
-    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(clip_image, blip_image, blip_input_ids, questions):

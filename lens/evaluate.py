@@ -142,7 +142,7 @@ def main():
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 40000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "google/flan-t5-xxl"
+    llm_name = "google/flan-t5-small"
     llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
@@ -151,4 +151,4 @@ def main():
     #interactive_test(llm_model, tokenizer)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
-#main()
+main()

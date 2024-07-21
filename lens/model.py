@@ -109,7 +109,7 @@ class Lens(nn.Module):
         self, model_name: str, load_8bit: bool, device: torch.device
     ):
         if load_8bit:
-            model = BlipForConditionalGeneration.from_pretrained(
+            model = Blip2ForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
                 device_map={"": device},
@@ -118,7 +118,7 @@ class Lens(nn.Module):
                 cache_dir=CACHE_DIR
             )
         else:
-            model = BlipForConditionalGeneration.from_pretrained(
+            model = Blip2ForConditionalGeneration.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32 if device == "cpu" else torch.float16,
                 config="blip_config.json",
@@ -312,12 +312,12 @@ class Lens(nn.Module):
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
+        import pdb; pdb.set_trace()
         captions_output = self.blip_model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
             max_length=max_length,
             min_length=min_length,
-            do_sample=True,
             top_p=1,
             top_k=top_k,
             repetition_penalty=1,
@@ -339,7 +339,6 @@ class Lens(nn.Module):
             for i in range(0, len(captions_text), num_captions)
         ]
         samples["intensive_captions"] = captions_text
-        samples["intensive_captions_output"] = captions_output
         samples["intensive_captions_logits"] = captions_logits
         return samples
 
