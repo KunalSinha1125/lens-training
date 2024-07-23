@@ -76,7 +76,7 @@ def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, llm_name, quest
                 correct_by_type[typ] = [0, 0]
             correct_by_type[typ][0] += (generations[i] == groundtruths[i])
             correct_by_type[typ][1] += 1
-    for i in range(len(prompts)):
+    for i in range(1):
         print(prompts[i] + generations[i] + f"(groundtruth: {groundtruths[i]})")
     print("Correctness: ", correct)
     return correct
@@ -154,4 +154,4 @@ def main():
     print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
-#main()
+main()

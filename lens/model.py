@@ -158,7 +158,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 10,
+        num_captions: int = 100,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -198,7 +198,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "vqa"
+            mode = "vqa_single"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -312,7 +312,7 @@ class Lens(nn.Module):
         max_length: int = 30,
         min_length: int = 1,
         top_k: int = 50,
-        num_captions: int = 100,
+        num_captions: int = 10,
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
         input_ids = samples["blip_input_ids"].to(self.device)
@@ -335,7 +335,7 @@ class Lens(nn.Module):
         )
         captions_text = np.array([cap.strip() for cap in captions_text]).reshape(bsz, -1)
         samples["intensive_captions"] = captions_text
-        samples["top_scores_intensive_captions"] = captions_outputs.sequences_scores
+        samples["top_scores_intensive_captions"] = captions_output.sequences_scores
         return samples
 
     # This function could be more efficient

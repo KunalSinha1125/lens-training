@@ -17,6 +17,7 @@ import torch.autograd.profiler as profiler
 import torch.nn as nn
 from accelerate import Accelerator
 from evaluate import compute_class_acc, compute_vqa_acc
+import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"You are using device {device}")
@@ -33,7 +34,7 @@ llm_model = T5ForConditionalGeneration.from_pretrained(
 tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=1e-2, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=5e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     num_inputs = bsz * k
     #inputs, all_labels = [], [] 
@@ -117,7 +118,7 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
 #     likelihood = torch.softmax(perplexity / gamma, dim=-1)
 #     return likelihood, perplexity
 
-def compute_tags_likelihood(samples, gamma=1.0, desc="tags"):
+def compute_tags_likelihood(samples, gamma=2.5e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
@@ -147,6 +148,9 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         desc_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
+    print("BLIP scores: ", desc_scores[0])
+    print("BLIP likelihood: ", desc_likelihood[0])
+    print("LLM likelihood: ", llm_likelihood[0])
     print("Loss: ", kl_penalty.item())
     return kl_penalty
 
@@ -206,7 +210,7 @@ def main(train_name, train_split, val_name, val_split, task, desc,
                 if task == "classification":
                     correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)
                 elif task == "vqa":
-                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer)
+                    correct += compute_vqa_acc(samples["prompts"], labels, llm_model, tokenizer, llm_name)
             print(f"Finished batch {i}")
         wandb.log({"train_loss_epoch": train_loss_epoch / (train_size // batch_size)})
         wandb.log({"train_acc": correct / train_size})
