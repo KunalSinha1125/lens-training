@@ -90,20 +90,20 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
             continue
         with torch.no_grad():
             samples = lens(
-                clip_image, blip_image, blip_input_ids,
-                return_attributes=False, return_intensive_captions=True, return_prompt=True, 
+                clip_image, blip_image, blip_input_ids, return_tags=True,
+                return_attributes=False, return_intensive_captions=False, return_prompt=True, 
                 questions=questions
             )
         total += batch_size
         if task == "vqa":
             correct += compute_vqa_acc(
-                samples["prompts"], labels, llm_model, tokenizer, 
-                llm_name, question_types, correct_by_type
+                samples["prompts"], labels, llm_model, tokenizer, llm_name
             )
         else:
             correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
-        print(correct, total)
-        print(correct_by_type)
+        print(f"{correct}/{total}={correct/total}")
+        #print(correct_by_type)
+    import pdb; pdb.set_trace()
     print(f"Final accuracy: {correct/total}")
 
 def test_prompts(llm_model, tokenizer):
@@ -138,11 +138,11 @@ def main():
     processor = LensProcessor()
     ds_name = "ReplugLens/VQAv2"
     ds_raw = load_dataset(ds_name, split="minival_validation", streaming=True, cache_dir=CACHE_DIR)
-    ds_raw = ds_raw.shuffle(seed=0, buffer_size=10000)
+    #ds_raw = ds_raw.shuffle(seed=0, buffer_size=10000)
     ds = LensDataset(ds_raw, processor, ds_name)
-    data_size, batch_size = 40000, 8
+    data_size, batch_size = 26000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "google/flan-t5-small"
+    llm_name = "google/flan-t5-xxl"
     print("Before LLM: ", torch.cuda.mem_get_info()[0] / 1e9)
     llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
