@@ -59,7 +59,7 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
     #return (pred == labels[0])
 
 def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, llm_name, question_types=None, correct_by_type={}):
-    #tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
     model_inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
     max_new_tokens = max([len(prompt) for prompt in prompts]) + 100
@@ -142,13 +142,13 @@ def main():
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 26000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "google/flan-t5-xxl"
+    llm_name = "meta-llama/Meta-Llama-3-8B"#"google/flan-t5-xxl"
     print("Before LLM: ", torch.cuda.mem_get_info()[0] / 1e9)
-    llm_model = T5ForConditionalGeneration.from_pretrained(
+    llm_model = AutoModelForCausalLM.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
     print("Before tokenizer: ", torch.cuda.mem_get_info()[0] / 1e9)
-    tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
+    tokenizer = AutoTokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
     #interactive_test(llm_model, tokenizer)
     print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
