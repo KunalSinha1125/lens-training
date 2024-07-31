@@ -90,7 +90,7 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
             continue
         with torch.no_grad():
             samples = lens(
-                clip_image, blip_image, blip_input_ids, return_tags=True,
+                clip_image, blip_image, blip_input_ids, return_tags=False,
                 return_attributes=False, return_intensive_captions=False, return_prompt=True, 
                 questions=questions
             )
@@ -103,7 +103,6 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
             correct += compute_class_acc(samples["prompts"][0], labels[0], llm_model, tokenizer)
         print(f"{correct}/{total}={correct/total}")
         #print(correct_by_type)
-    import pdb; pdb.set_trace()
     print(f"Final accuracy: {correct/total}")
 
 def test_prompts(llm_model, tokenizer):
@@ -142,7 +141,7 @@ def main():
     ds = LensDataset(ds_raw, processor, ds_name)
     data_size, batch_size = 26000, 8
     dataloader = DataLoader(ds, batch_size=batch_size)
-    llm_name = "meta-llama/Meta-Llama-3-8B"#"google/flan-t5-xxl"
+    llm_name = "google/flan-t5-xl"#"meta-llama/Llama-2-7b-hf"#"google/flan-t5-xxl"
     print("Before LLM: ", torch.cuda.mem_get_info()[0] / 1e9)
     llm_model = AutoModelForCausalLM.from_pretrained(
         llm_name, trust_remote_code=True,

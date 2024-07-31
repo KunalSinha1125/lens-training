@@ -129,6 +129,9 @@ def create_prompt_sample(
     elif mode == "baseline":
         prompt = f"Question: {question}\nShort Answer:"
 
+    elif mode == "baseline_gemma":
+        prompt = f"Question: {question}\nOutput no more than a few words to answer the question succintly. Answer:"
+
     elif mode == "attributes_and_captions":
         attributes = ". ".join(samples[attributes_col][idx])
         prompt += f"Attributes: {attributes}"
