@@ -59,7 +59,7 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
     #return (pred == labels[0])
 
 def compute_vqa_acc(prompts, groundtruths, llm_model, tokenizer, llm_name, question_types=None, correct_by_type={}):
-    tokenizer.pad_token_id = tokenizer.eos_token_id
+    #tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
     model_inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
     max_new_tokens = max([len(prompt) for prompt in prompts]) + 100
@@ -91,7 +91,7 @@ def evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_nam
         with torch.no_grad():
             samples = lens(
                 clip_image, blip_image, blip_input_ids, return_tags=False,
-                return_attributes=False, return_intensive_captions=False, return_prompt=True, 
+                return_attributes=False, return_intensive_captions=True, return_prompt=True, 
                 questions=questions
             )
         total += batch_size
@@ -112,15 +112,15 @@ def test_prompts(llm_model, tokenizer):
     all_prompts = [
             f"Instruct: you are given the image tag {tags}. Based on this information, output a word that describes the image. \nOutput: "
     ]
-    for prompt in all_prompts:
-        compute_class_acc(prompt, "airplane", llm_model, tokenizer)
+    #for prompt in all_prompts:
+        #compute_class_acc(prompt, "airplane", tokenizer)
 
-def interactive_test(llm_model, tokenizer, vqa=True):
+def interactive_test(llm_model, tokenizer, llm_name, vqa=True):
     while True:
         prompt = input("Specify prompt: ")
         answer = input("Specify answer: ")
         if vqa:
-            compute_class_acc([prompt], [answer], llm_model, tokenizer, [answer])
+            compute_vqa_acc([prompt], [answer], llm_model, tokenizer, llm_name)
         #all_classes = ["hat", "water", "shirt", "bottle", "chip", "bowl", "computer", "wheat", "bird"]
         #compute_class_acc([prompt, prompt], [answer, answer], llm_model, tokenizer, all_classes)
 
@@ -143,14 +143,14 @@ def main():
     dataloader = DataLoader(ds, batch_size=batch_size)
     llm_name = "google/flan-t5-xl"#"meta-llama/Llama-2-7b-hf"#"google/flan-t5-xxl"
     print("Before LLM: ", torch.cuda.mem_get_info()[0] / 1e9)
-    llm_model = AutoModelForCausalLM.from_pretrained(
+    llm_model = T5ForConditionalGeneration.from_pretrained(
         llm_name, trust_remote_code=True,
         cache_dir=CACHE_DIR).to(device)
     print("Before tokenizer: ", torch.cuda.mem_get_info()[0] / 1e9)
-    tokenizer = AutoTokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
+    tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
-    #interactive_test(llm_model, tokenizer)
+    #interactive_test(llm_model, tokenizer, llm_name)
     print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
     evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
-main()
+#main()

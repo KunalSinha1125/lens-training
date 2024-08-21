@@ -34,7 +34,7 @@ llm_model = T5ForConditionalGeneration.from_pretrained(
 tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=5e-2, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     num_inputs = bsz * k
     #inputs, all_labels = [], [] 
@@ -51,7 +51,7 @@ def compute_llm_likelihood(samples, labels, gamma=5e-2, desc="tags"):
     prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
     tokenizer.padding_side = "right"
     label_tokens = tokenizer(labels, return_tensors="pt", padding=True, add_special_tokens=True).to(device)
-    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
+    reader_tok, reader_mask = prompt_tokens.input_ids[:, :-1], prompt_tokens.attention_mask[:, :-1]
     answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
 
     repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=1).view(-1, answer_tok.shape[-1])
@@ -64,16 +64,16 @@ def compute_llm_likelihood(samples, labels, gamma=5e-2, desc="tags"):
     #with torch.autocast("cuda"):
     with torch.no_grad():
         lsr_logits = llm_model(
-            input_ids=reader_tok,#[:, :-1],
-            attention_mask=reader_mask,#[:, :-1],
-            decoder_input_ids=repeat_answer_tok,
-            decoder_attention_mask=repeat_answer_mask,
+            input_ids=reader_tok[:, :-1],
+            attention_mask=reader_mask[:, :-1],
+            decoder_input_ids=repeat_answer_tok,#[:, :-1],
+            decoder_attention_mask=repeat_answer_mask,#[:, :-1],
             use_cache=False,
         ).logits
     # compute perplexity of question
     #continuation_length = repeat_answer_tok.shape[-1]
     #lsr_logits = lsr_logits[:, -continuation_length:]
-    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
+    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_tok == 0, IGNORE_INDEX).to(device)
     lm_likelihood , lm_perplexity = compute_perplexity(
         lsr_logits.reshape(-1, lsr_logits.shape[-1]), lsr_labels.view(-1), 
         bsz, k, gamma
@@ -150,6 +150,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     )
     print("BLIP scores: ", desc_scores[0])
     print("BLIP likelihood: ", desc_likelihood[0])
+    print("LLM perplexity: ", llm_perplexity[0])
     print("LLM likelihood: ", llm_likelihood[0])
     print("Loss: ", kl_penalty.item())
     return kl_penalty
@@ -237,7 +238,7 @@ if __name__ == "__main__":
     imagenet-1k: python3 train_alt.py --train_dataset imagenet-1k --train_split validation --val_split test --desc tags
     food101: python3 train_alt.py --train_dataset food101 --train_split train --val_split validation --desc tags
     vqav2: python3 train_alt.py --train_dataset HuggingFaceM4/VQAv2 --train_split train --val_split validation --task vqa --desc intensive_captions
-    vqav2: python3 train_alt.py --train_dataset ReplugLens/VQAv2 --train_split train --val_split minival_validation --task vqa --desc intensive_captions
+    vqav2: python3 train_alt.py --train_dataset ReplugLens/VQAv2 --train_split minival_validation --val_split testdev --task vqa --desc intensive_captions
     '''
     parser = ArgumentParser(description='Train',
                             formatter_class=ArgumentDefaultsHelpFormatter)

@@ -19,6 +19,7 @@ MAP_CLIP_NAME = {
     "hf-hub:laion/CLIP-ViT-bigG-14-laion2B-39B-b160k": "laion-ViT-bigG-14-2B",
 }
 
+blip_prompt = "a picture of"
 
 def ddp_setup():
     init_process_group(backend="nccl", timeout=datetime.timedelta(seconds=180000))
@@ -92,7 +93,6 @@ def get_llm_model(version, load_8bit, device_map=None):
     model = model.eval()
     return model
 
-
 def create_prompt_sample(
     samples,
     idx,
@@ -113,18 +113,28 @@ def create_prompt_sample(
         question = samples[question_col][idx]
 
     if mode == "vqa":
-        prompt += "Captions:"
-        prompt += ".".join(
-            samples[intensive_captions_col][idx][:num_intensive_captions]
+        context = ".".join(
+            samples[intensive_captions_col][idx]
         )
-        prompt += "\nQuestion:"
-        prompt += question
-        prompt += "\nShort Answer:"
+        prompt = f"Context: {context.lower()}\n\nQuestion: {question.lower()}\n\nAnswer:"
+        #prompt += "Captions:"
+        #prompt += ".".join(
+        #    samples[intensive_captions_col][idx][:num_intensive_captions]
+        #)
+        #prompt += "\nQuestion:"
+        #prompt += question
+        #prompt += "\nAnswer with a word or short phrase. Answer:"
 
     elif mode == "vqa_single":
-        prompt += f"Caption: {samples[intensive_captions_col][idx][desc_idx]}"
-        prompt += f"\nQuestion: {question}"
-        prompt += "\nShort Answer:"
+        #prompt += f"Image caption: {samples[intensive_captions_col][idx][desc_idx]}.\nQuestion: {question.lower()}\nShort Answer:"
+        context = samples[intensive_captions_col][idx][desc_idx]
+        #prompt += f"Answer the question based on information in the context. Context: {context}. Question: {question} Answer:"
+        #prompt += f"Context: {context.lower()}\n\nQuestion: {question}\n\nAnswer:"
+        prompt = f"Read this and answer the question\n\n{context}.\n\n{question}"
+        #prompt = f"Article: {context}.\n\nNow answer this question: {question}"
+        print(prompt)
+        #prompt += f"{question} Output a word or phrase to answer this question based on the caption."
+        #prompt += "\nOutput:"
 
     elif mode == "baseline":
         prompt = f"Question: {question}\nShort Answer:"

@@ -21,6 +21,7 @@ from utils import (
     create_prompt_sample,
     create_sampler,
     default_device,
+    blip_prompt
 )
 import numpy as np
 import random
@@ -36,7 +37,7 @@ class Lens(nn.Module):
     def __init__(
         self,
         clip_name: str = None,#"hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = None,#"Salesforce/blip-image-captioning-large",
+        blip_name: str = "Salesforce/blip-image-captioning-large",
         attributes_weights: str = "zw_attributes_laion_ViT_H_14_2B_descriptors_text_davinci_003_full.pt",
         tags_weights: str = "zw_tags_laion_ViT_H_14_2B_vocab_lens.pt",
         vocab_attributes: str = "llm-lens/descriptors-text-davinci-003",
@@ -158,7 +159,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 100,
+        num_captions: int = 5,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -198,7 +199,7 @@ class Lens(nn.Module):
         if questions:
             samples["questions"] = questions
         if return_prompt:
-            mode = "baseline_gemma"
+            mode = "vqa"
             #if return_tags and not return_attributes:
                 #mode = "tags_only"
             #elif return_attributes and not return_tags:
@@ -309,7 +310,7 @@ class Lens(nn.Module):
     def forward_intensive_caption(
         self,
         samples: dict,
-        max_length: int = 30,
+        max_length: int = 1000,
         min_length: int = 1,
         top_k: int = 50,
         num_captions: int = 10,
@@ -326,6 +327,8 @@ class Lens(nn.Module):
             num_return_sequences=num_captions,
             output_scores=True,
             return_dict_in_generate=True,
+            do_sample=True,
+            temperature=1.0
         )
         # sequences, scores = captions_output.sequences, captions_output.scores
         # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
@@ -333,7 +336,7 @@ class Lens(nn.Module):
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )
-        captions_text = np.array([cap.strip() for cap in captions_text]).reshape(bsz, -1)
+        captions_text = np.array([cap[len(blip_prompt):].strip() for cap in captions_text]).reshape(bsz, -1)
         samples["intensive_captions"] = captions_text
         samples["top_scores_intensive_captions"] = captions_output.sequences_scores
         return samples
@@ -472,7 +475,7 @@ class LensProcessor:
         except:
             clip_image = self.clip_processor(images=images, return_tensors="pt")["pixel_values"]
         outputs = self.blip_processor(
-           images=images, text=["a picture of"] * len(images), return_tensors="pt"
+            images=images, text=[blip_prompt] * len(images), return_tensors="pt"
         )
         blip_image = outputs["pixel_values"]
         blip_input_ids = outputs["input_ids"]
