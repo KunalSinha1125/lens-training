@@ -37,7 +37,7 @@ class Lens(nn.Module):
     def __init__(
         self,
         clip_name: str = None,#"hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "Salesforce/blip-image-captioning-large",
+        blip_name: str = "unography/blip-large-long-cap",#"Salesforce/blip-image-captioning-large",
         attributes_weights: str = "zw_attributes_laion_ViT_H_14_2B_descriptors_text_davinci_003_full.pt",
         tags_weights: str = "zw_tags_laion_ViT_H_14_2B_vocab_lens.pt",
         vocab_attributes: str = "llm-lens/descriptors-text-davinci-003",
