@@ -10,8 +10,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 IGNORE_INDEX = -100
 
 def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, buffer_size=125):
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-    tokenizer.padding_side = "left"
+    #tokenizer.pad_token_id = tokenizer.eos_token_id
+    #tokenizer.padding_side = "left"
     prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
     reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
     batch_size, num_classes = len(prompts), min(len(all_classes), buffer_size)
@@ -124,7 +124,7 @@ def interactive_test(llm_model, tokenizer, llm_name, vqa=True):
         #answer = input("Specify answer: ")
         #if vqa:
         #    compute_vqa_acc([prompt], [answer], llm_model, tokenizer, llm_name)
-        all_classes = ["yes", "no"]         
+        all_classes = ["cat", "dog"]         
         compute_class_acc([prompt], [""], llm_model, tokenizer, all_classes)
 
 def generate_test(llm_model, tokenizer):

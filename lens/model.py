@@ -159,7 +159,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 5,
+        num_captions: int = 2,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -330,7 +330,6 @@ class Lens(nn.Module):
             do_sample=True,
             temperature=1.0
         )
-        import pdb; pdb.set_trace()
         # sequences, scores = captions_output.sequences, captions_output.scores
         # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 

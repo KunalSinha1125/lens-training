@@ -46,37 +46,34 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
             )
             prompts.append(prompt)
     # Tokenize full inputs
-    tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
     prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
-    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
-    reader_tok = torch.repeat_interleave(reader_tok[:, None], k, dim=1).view(-1, reader_tok.shape[-1])
-    reader_mask = torch.repeat_interleave(reader_mask[:, None], k, dim=1).view(-1, reader_mask.shape[-1]) 
+    reader_tok, reader_mask = prompt_tokens.input_ids[:, :-1], prompt_tokens.attention_mask[:, :-1] 
     tokenizer.padding_side = "right"
     label_tokens = tokenizer(labels, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
-    answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
-    answer_tok = torch.repeat_interleave(answer_tok[None, :], bsz, dim=0).view(-1, answer_tok.shape[-1])
-    answer_mask = torch.repeat_interleave(answer_mask[None, :], bsz, dim=0).view(-1, answer_mask.shape[-1])
-    
+    answer_tok, answer_mask = label_tokens.input_ids[:, :-1], label_tokens.attention_mask[:, :-1]
+    repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=-1).view(-1, answer_tok.shape[-1])
+    repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], k, dim=-1).view(-1, answer_mask.shape[-1])
+
     lsr_logits = llm_model(
-        input_ids=reader_tok[:, :-1],
-        attention_mask=reader_mask[:, :-1],
-        decoder_input_ids=answer_tok[:, :-1],
-        decoder_attention_mask=answer_mask[:, :-1],
+        input_ids=reader_tok,
+        attention_mask=reader_mask,
+        decoder_input_ids=repeat_answer_tok,
+        decoder_attention_mask=repeat_answer_mask,
         use_cache=False,
     ).logits
 
-    lsr_labels = answer_tok[:, :-1].masked_fill(answer_mask[:, :-1] == 0, IGNORE_INDEX).to(device)
+    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_mask == 0, IGNORE_INDEX).to(device)
     token_loss = F.cross_entropy(
         lsr_logits.reshape(-1, lsr_logits.shape[-1]),
         lsr_labels.view(-1),
         ignore_index=IGNORE_INDEX,
         reduction='none',
-    ).reshape((batch_size, k, -1))
-    z = (lsr_labels.reshape((batch_size, k, -1)) > -1).sum(dim=-1)
-    cross_entropy = -token_loss.sum(dim=-1) / z
-    llm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
-    return llm_likelihood, cross_entropy
+    ).reshape((bsz, k, -1))
+    z = (lsr_labels.reshape((bsz, k, -1)) > -1).sum(dim=-1)
+    llm_perplexity = -token_loss.sum(dim=-1) / z
+    llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
+    return llm_likelihood, llm_perplexity
 
 def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
     token_loss = F.cross_entropy(
@@ -172,7 +169,7 @@ def forward(clip_image, blip_image, blip_input_ids, questions):
     return samples
 
 def main(train_name, train_split, val_name, val_split, task, desc,
-         num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
+         num_epochs=100, lr=1e-5, batch_size=1, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True, cache_dir=CACHE_DIR)
