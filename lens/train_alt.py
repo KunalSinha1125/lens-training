@@ -46,39 +46,37 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
             )
             prompts.append(prompt)
     # Tokenize full inputs
-    #tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+    tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.padding_side = "left"
-    prompt_tokens = tokenizer(prompts, return_tensors="pt", padding=True).to(device)
+    prompt_tokens = tokenizer(prompts, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
+    reader_tok, reader_mask = prompt_tokens.input_ids, prompt_tokens.attention_mask
+    reader_tok = torch.repeat_interleave(reader_tok[:, None], k, dim=1).view(-1, reader_tok.shape[-1])
+    reader_mask = torch.repeat_interleave(reader_mask[:, None], k, dim=1).view(-1, reader_mask.shape[-1]) 
     tokenizer.padding_side = "right"
-    label_tokens = tokenizer(labels, return_tensors="pt", padding=True, add_special_tokens=True).to(device)
-    reader_tok, reader_mask = prompt_tokens.input_ids[:, :-1], prompt_tokens.attention_mask[:, :-1]
+    label_tokens = tokenizer(labels, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
     answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
+    answer_tok = torch.repeat_interleave(answer_tok[None, :], bsz, dim=0).view(-1, answer_tok.shape[-1])
+    answer_mask = torch.repeat_interleave(answer_mask[None, :], bsz, dim=0).view(-1, answer_mask.shape[-1])
+    
+    lsr_logits = llm_model(
+        input_ids=reader_tok[:, :-1],
+        attention_mask=reader_mask[:, :-1],
+        decoder_input_ids=answer_tok[:, :-1],
+        decoder_attention_mask=answer_mask[:, :-1],
+        use_cache=False,
+    ).logits
 
-    repeat_answer_tok = torch.repeat_interleave(answer_tok[:, None], k, dim=1).view(-1, answer_tok.shape[-1])
-    repeat_answer_mask = torch.repeat_interleave(answer_mask[:, None], k, dim=1).view(-1, answer_mask.shape[-1])
-    reader_tok = reader_tok.reshape(-1, reader_tok.shape[-1])
-    reader_mask = reader_mask.reshape(-1, reader_mask.shape[-1])
-
-    #lsr_input_ids = torch.cat((reader_tok, repeat_answer_tok), dim=-1).to(device)
-    #lsr_attention_mask = torch.cat((reader_mask, repeat_answer_mask), dim=-1).to(device)
-    #with torch.autocast("cuda"):
-    with torch.no_grad():
-        lsr_logits = llm_model(
-            input_ids=reader_tok[:, :-1],
-            attention_mask=reader_mask[:, :-1],
-            decoder_input_ids=repeat_answer_tok[:, :-1],
-            decoder_attention_mask=repeat_answer_mask[:, :-1],
-            use_cache=False,
-        ).logits
-    # compute perplexity of question
-    #continuation_length = repeat_answer_tok.shape[-1]
-    #lsr_logits = lsr_logits[:, -continuation_length:]
-    lsr_labels = repeat_answer_tok[:, :-1].masked_fill(repeat_answer_mask[:, :-1] == 0, IGNORE_INDEX).to(device)
-    lm_likelihood , lm_perplexity = compute_perplexity(
-        lsr_logits.reshape(-1, lsr_logits.shape[-1]), lsr_labels.view(-1), 
-        bsz, k, gamma
-    )
-    return lm_likelihood, lm_perplexity
+    lsr_labels = answer_tok[:, :-1].masked_fill(answer_mask[:, :-1] == 0, IGNORE_INDEX).to(device)
+    token_loss = F.cross_entropy(
+        lsr_logits.reshape(-1, lsr_logits.shape[-1]),
+        lsr_labels.view(-1),
+        ignore_index=IGNORE_INDEX,
+        reduction='none',
+    ).reshape((batch_size, k, -1))
+    z = (lsr_labels.reshape((batch_size, k, -1)) > -1).sum(dim=-1)
+    cross_entropy = -token_loss.sum(dim=-1) / z
+    llm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
+    return llm_likelihood, cross_entropy
 
 def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
     token_loss = F.cross_entropy(
