@@ -66,14 +66,14 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
         lsr_logits = llm_model(
             input_ids=reader_tok[:, :-1],
             attention_mask=reader_mask[:, :-1],
-            decoder_input_ids=repeat_answer_tok,#[:, :-1],
-            decoder_attention_mask=repeat_answer_mask,#[:, :-1],
+            decoder_input_ids=repeat_answer_tok[:, :-1],
+            decoder_attention_mask=repeat_answer_mask[:, :-1],
             use_cache=False,
         ).logits
     # compute perplexity of question
     #continuation_length = repeat_answer_tok.shape[-1]
     #lsr_logits = lsr_logits[:, -continuation_length:]
-    lsr_labels = repeat_answer_tok.masked_fill(repeat_answer_tok == 0, IGNORE_INDEX).to(device)
+    lsr_labels = repeat_answer_tok[:, :-1].masked_fill(repeat_answer_mask[:, :-1] == 0, IGNORE_INDEX).to(device)
     lm_likelihood , lm_perplexity = compute_perplexity(
         lsr_logits.reshape(-1, lsr_logits.shape[-1]), lsr_labels.view(-1), 
         bsz, k, gamma
@@ -153,6 +153,7 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
     print("LLM perplexity: ", llm_perplexity[0])
     print("LLM likelihood: ", llm_likelihood[0])
     print("Loss: ", kl_penalty.item())
+    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(clip_image, blip_image, blip_input_ids, questions):

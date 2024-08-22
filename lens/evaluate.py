@@ -24,20 +24,22 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
         tokenizer.padding_side = "right"
         label_tokens = tokenizer(classes, return_tensors="pt", add_special_tokens=True, padding=True).to(device)
         answer_tok, answer_mask = label_tokens.input_ids, label_tokens.attention_mask
-        answer_tok = torch.repeat_interleave(answer_tok[None, :], batch_size, dim=0).view(-1, answer_tok.shape[-1])
-        answer_mask = torch.repeat_interleave(answer_mask[None, :], batch_size, dim=0).view(-1, answer_mask.shape[-1])
+        repeat_answer_tok = torch.repeat_interleave(answer_tok[None, :], batch_size, dim=0).view(-1, answer_tok.shape[-1])
+        repeat_answer_mask = torch.repeat_interleave(answer_mask[None, :], batch_size, dim=0).view(-1, answer_mask.shape[-1])
         
-        lsr_input_ids = torch.cat((reader_tok, answer_tok), dim=-1).to(device)
-        lsr_attention_mask = torch.cat((reader_mask, answer_mask), dim=-1).to(device)
-        with torch.autocast("cuda"):
-            lsr_logits = llm_model(
-                input_ids=lsr_input_ids[:, :-1],
-                attention_mask=lsr_attention_mask[:, :-1],
-                use_cache=False,
-            ).logits
-        continuation_length = answer_tok.shape[-1]
-        lsr_logits = lsr_logits[:, -continuation_length:]
-        lsr_labels = answer_tok.masked_fill(answer_mask == 0, IGNORE_INDEX).to(device)
+        #lsr_input_ids = torch.cat((reader_tok, answer_tok), dim=-1).to(device)
+        #lsr_attention_mask = torch.cat((reader_mask, answer_mask), dim=-1).to(device)
+        #with torch.autocast("cuda"):
+        lsr_logits = llm_model(
+            input_ids=reader_tok[:, :-1], #lsr_input_ids[:, :-1],
+            attention_mask=reader_mask[:, :-1], #lsr_attention_mask[:, :-1],
+            decoder_input_ids=repeat_answer_tok[:, :-1],
+            decoder_attention_mask=repeat_answer_mask[:, :-1],
+            use_cache=False,
+        ).logits
+        #continuation_length = answer_tok.shape[-1]
+        #lsr_logits = lsr_logits[:, -continuation_length:]
+        lsr_labels = repeat_answer_tok[:, :-1].masked_fill(repeat_answer_mask[:, :-1] == 0, IGNORE_INDEX).to(device)
         token_loss = F.cross_entropy(
             lsr_logits.reshape(-1, lsr_logits.shape[-1]),
             lsr_labels.view(-1),
@@ -46,6 +48,7 @@ def compute_class_acc(prompts, groundtruths, llm_model, tokenizer, all_classes, 
         ).reshape((batch_size, num_classes, -1))
         z = (lsr_labels.reshape((batch_size, num_classes, -1)) > -1).sum(dim=-1)
         cross_entropy.append(token_loss.sum(dim=-1) / z)
+        import pdb; pdb.set_trace()
         idx += num_classes
     cross_entropy = torch.cat(cross_entropy, dim=-1)
     print("Cross entropy: ", cross_entropy)
@@ -118,11 +121,11 @@ def test_prompts(llm_model, tokenizer):
 def interactive_test(llm_model, tokenizer, llm_name, vqa=True):
     while True:
         prompt = input("Specify prompt: ")
-        answer = input("Specify answer: ")
-        if vqa:
-            compute_vqa_acc([prompt], [answer], llm_model, tokenizer, llm_name)
-        #all_classes = ["hat", "water", "shirt", "bottle", "chip", "bowl", "computer", "wheat", "bird"]
-        #compute_class_acc([prompt, prompt], [answer, answer], llm_model, tokenizer, all_classes)
+        #answer = input("Specify answer: ")
+        #if vqa:
+        #    compute_vqa_acc([prompt], [answer], llm_model, tokenizer, llm_name)
+        all_classes = ["yes", "no"]         
+        compute_class_acc([prompt], [""], llm_model, tokenizer, all_classes)
 
 def generate_test(llm_model, tokenizer):
     while True:
@@ -149,8 +152,8 @@ def main():
     print("Before tokenizer: ", torch.cuda.mem_get_info()[0] / 1e9)
     tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
     #generate_test(llm_model, tokenizer)
-    #interactive_test(llm_model, tokenizer, llm_name)
+    interactive_test(llm_model, tokenizer, llm_name)
     print("Before pipeline: ", torch.cuda.mem_get_info()[0] / 1e9)
-    evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
+    #evaluate_pipeline(dataloader, lens, processor, llm_model, tokenizer, llm_name,  data_size, batch_size)
 
 #main()

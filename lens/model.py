@@ -155,7 +155,7 @@ class Lens(nn.Module):
         num_tags: int = 10,
         num_attributes: int = 1,
         contrastive_th: float = 0.2,
-        max_length: int = 30,
+        max_length: int = 1000,
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
@@ -311,8 +311,8 @@ class Lens(nn.Module):
         self,
         samples: dict,
         max_length: int = 1000,
-        min_length: int = 1,
-        top_k: int = 50,
+        min_length: int = 10,
+        top_k: int = 5,
         num_captions: int = 10,
     ):
         pixel_values = samples["blip_image"].to(self.device, self.blip_model.dtype)
@@ -330,6 +330,7 @@ class Lens(nn.Module):
             do_sample=True,
             temperature=1.0
         )
+        import pdb; pdb.set_trace()
         # sequences, scores = captions_output.sequences, captions_output.scores
         # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
