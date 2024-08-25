@@ -333,13 +333,25 @@ class Lens(nn.Module):
         #sequences, scores = captions_output.sequences, captions_output.scores
         #captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
-        import pdb; pdb.set_trace()
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )
         captions_text = np.array([cap[len(blip_prompt):].strip() for cap in captions_text]).reshape(bsz, -1)
         samples["intensive_captions"] = captions_text
-        samples["top_scores_intensive_captions"] = captions_output.sequences_scores
+        forward_output = self.blip_model(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            max_length=max_length,
+            min_length=min_length,
+            num_beams=num_captions,
+            num_return_sequences=num_captions,
+            output_scores=True,
+            return_dict_in_generate=True,
+            do_sample=False,
+            temperature=1.0,
+        )
+        import pdb; pdb.set_trace()
+        samples["top_scores_intensive_captions"] = forward_output.logits
         return samples
 
     # This function could be more efficient
