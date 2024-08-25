@@ -34,7 +34,7 @@ llm_model = T5ForConditionalGeneration.from_pretrained(
 tokenizer = T5Tokenizer.from_pretrained(llm_name, trust_remote_code=True, cache_dir=CACHE_DIR)
 IGNORE_INDEX = -100
 
-def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
+def compute_llm_likelihood(samples, labels, gamma=0.1, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     num_inputs = bsz * k
     #inputs, all_labels = [], [] 
@@ -75,18 +75,6 @@ def compute_llm_likelihood(samples, labels, gamma=1.0, desc="tags"):
     llm_likelihood = torch.softmax(llm_perplexity / gamma, dim=-1)
     return llm_likelihood, llm_perplexity
 
-def compute_perplexity(logits, labels, bsz, k, gamma=1.0):
-    token_loss = F.cross_entropy(
-        logits, labels,
-        ignore_index=IGNORE_INDEX,
-        reduction='none',
-    )
-    scores = token_loss.view(bsz, k, -1)
-    z = (labels.view(bsz, k, -1) > -1).sum(dim=-1)
-    lm_perplexity = -scores.sum(dim=-1) / z  # negative if lower is better, otherwise positive
-    lm_likelihood = torch.softmax(lm_perplexity / gamma, dim=-1)
-    return lm_likelihood, lm_perplexity
-
 def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     prompts = []
@@ -113,20 +101,20 @@ def compute_llm_likelihood_hf(samples, labels, gamma=1e-2, desc="tags"):
 #     likelihood = torch.softmax(perplexity / gamma, dim=-1)
 #     return likelihood, perplexity
 
-def compute_tags_likelihood(samples, gamma=2.5e-2, desc="tags"):
+def compute_tags_likelihood(samples, gamma=0.1, desc="tags"):
     bsz, k = np.array(samples[desc]).shape
     tags_scores = samples[f"top_scores_{desc}"].reshape((bsz, k)).to(device)
     tags_likelihood = torch.softmax(tags_scores / gamma, dim=-1)
     return tags_likelihood, tags_scores
 
 def compute_loss(samples, labels, table_name=None, desc="tags"):
-    desc_likelihood, desc_scores = compute_tags_likelihood(samples, desc=desc)
+    tags_likelihood, tags_scores = compute_tags_likelihood(samples, desc=desc)
     with torch.no_grad():
         llm_likelihood, llm_perplexity = compute_llm_likelihood(samples, labels, desc=desc)
     if table_name:
         table_data = {
-            "Description likelihood": desc_likelihood[0],
-            "Description scores": desc_scores[0],
+            "Description likelihood": tags_likelihood[0],
+            "Description scores": tags_scores[0],
             "LM likelihood": llm_likelihood[0],
             "LM perplexity": llm_perplexity[0],
         }
@@ -134,21 +122,17 @@ def compute_loss(samples, labels, table_name=None, desc="tags"):
         for k, v in table_data.items():
             table_data[k] = v.detach().to(dtype=torch.float16).cpu().numpy()[indices]
         table_data[desc] = np.array(samples[desc][0])[indices]
-        #table_data["Prompt"] = np.array([
-        #    tokenizer.decode(lsr_input_ids[i]) for i in range(lsr_input_ids.shape[0])
-        #])[indices]
         table = wandb.Table(data=pd.DataFrame(table_data))
         wandb.log({table_name: table})
     kl_penalty = F.kl_div(
-        desc_likelihood.log(), llm_likelihood.log(),
+        tags_likelihood.log(), llm_likelihood.log(),
         reduction="batchmean", log_target=True
     )
-    print("BLIP scores: ", desc_scores[0])
-    print("BLIP likelihood: ", desc_likelihood[0])
-    print("LLM perplexity: ", llm_perplexity[0])
-    print("LLM likelihood: ", llm_likelihood[0])
+    #print("BLIP scores: ", tags_scores[0])
+    #print("BLIP likelihood: ", tags_likelihood[0])
+    print("LLM perplexity: ", llm_perplexity[0].sort())
+    #print("LLM likelihood: ", llm_likelihood[0])
     print("Loss: ", kl_penalty.item())
-    import pdb; pdb.set_trace()
     return kl_penalty
 
 def forward(clip_image, blip_image, blip_input_ids, questions):
@@ -169,7 +153,7 @@ def forward(clip_image, blip_image, blip_input_ids, questions):
     return samples
 
 def main(train_name, train_split, val_name, val_split, task, desc,
-         num_epochs=100, lr=1e-5, batch_size=1, train_size=8000, val_size=800):
+         num_epochs=100, lr=1e-5, batch_size=8, train_size=8000, val_size=800):
     wandb.init(project="lens-training-coco-dataset")
     save_path = "trained_model_attributes.pt"
     train_ds_raw = load_dataset(train_name, split=train_split, streaming=True, trust_remote_code=True, cache_dir=CACHE_DIR)
@@ -199,10 +183,9 @@ def main(train_name, train_split, val_name, val_split, task, desc,
             train_loss = compute_loss(samples, labels, desc=desc)
             wandb.log({"train_loss": train_loss.item()})
             train_loss_epoch += train_loss.item()
-            optimizer.zero_grad()
-            train_loss.requires_grad = True
             train_loss.backward()
             optimizer.step()
+            optimizer.zero_grad()
             with torch.no_grad():
                 if task == "classification":
                     correct += compute_class_acc(samples["prompts"], labels, llm_model, tokenizer, train_ds.classes)

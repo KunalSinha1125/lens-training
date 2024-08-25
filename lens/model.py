@@ -37,7 +37,7 @@ class Lens(nn.Module):
     def __init__(
         self,
         clip_name: str = None,#"hf-hub:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-        blip_name: str = "unography/blip-large-long-cap",#"Salesforce/blip-image-captioning-large",
+        blip_name: str = "Salesforce/blip-image-captioning-large",#"unography/blip-large-long-cap",#"Salesforce/blip-image-captioning-large",
         attributes_weights: str = "zw_attributes_laion_ViT_H_14_2B_descriptors_text_davinci_003_full.pt",
         tags_weights: str = "zw_tags_laion_ViT_H_14_2B_vocab_lens.pt",
         vocab_attributes: str = "llm-lens/descriptors-text-davinci-003",
@@ -129,7 +129,7 @@ class Lens(nn.Module):
                 config="blip_config.json",
                 cache_dir=CACHE_DIR
             )
-        model = model.train()
+        #model = model.train()
         model = model.to(device)
 
         return model
@@ -159,7 +159,7 @@ class Lens(nn.Module):
         min_length: int = 10,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 2,
+        num_captions: int = 100,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -327,12 +327,13 @@ class Lens(nn.Module):
             num_return_sequences=num_captions,
             output_scores=True,
             return_dict_in_generate=True,
-            do_sample=True,
-            temperature=1.0
+            do_sample=False,
+            temperature=1.0,
         )
-        # sequences, scores = captions_output.sequences, captions_output.scores
-        # captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
+        #sequences, scores = captions_output.sequences, captions_output.scores
+        #captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
+        import pdb; pdb.set_trace()
         captions_text = self.blip_processor.batch_decode(
             captions_output.sequences, skip_special_tokens=True
         )

@@ -129,7 +129,7 @@ def create_prompt_sample(
         #prompt += f"Image caption: {samples[intensive_captions_col][idx][desc_idx]}.\nQuestion: {question.lower()}\nShort Answer:"
         context = samples[intensive_captions_col][idx][desc_idx]
         #prompt += f"Answer the question based on information in the context. Context: {context}. Question: {question} Answer:"
-        prompt += f"I see {context.lower()} {question.lower()}"
+        prompt += f"I see {context.lower()}. {question.lower()}"
         #prompt = f"Read this and answer the question\n\n{context}.\n\n{question}"
         #prompt = f"Article: {context}.\n\nNow answer this question: {question}"
         print(prompt)
