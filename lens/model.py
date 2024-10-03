@@ -6,6 +6,7 @@ import huggingface_hub
 import open_clip
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from datasets import Dataset, IterableDataset, load_dataset
 from transformers import (
     AutoProcessor,
@@ -129,7 +130,7 @@ class Lens(nn.Module):
                 config="blip_config.json",
                 cache_dir=CACHE_DIR
             )
-        #model = model.train()
+        model = model.train()
         model = model.to(device)
 
         return model
@@ -155,11 +156,11 @@ class Lens(nn.Module):
         num_tags: int = 10,
         num_attributes: int = 1,
         contrastive_th: float = 0.2,
-        max_length: int = 1000,
-        min_length: int = 10,
+        max_length: int = 5,
+        min_length: int = 1,
         top_k: int = 1,
         questions = [],
-        num_captions: int = 100,
+        num_captions: int = 5,
         return_tags: bool = False,
         return_attributes: bool = False,
         return_global_caption: bool = False,
@@ -310,8 +311,8 @@ class Lens(nn.Module):
     def forward_intensive_caption(
         self,
         samples: dict,
-        max_length: int = 1000,
-        min_length: int = 10,
+        max_length: int = 50,
+        min_length: int = 1,
         top_k: int = 5,
         num_captions: int = 10,
     ):
@@ -330,19 +331,35 @@ class Lens(nn.Module):
             do_sample=False,
             temperature=1.0,
         )
-        sequences, scores = captions_output.sequences, captions_output.scores
+        sequences = captions_output.sequences
         #captions_logits = self.blip_model.compute_transition_scores(sequences, scores)
 
-        captions_text = self.blip_processor.batch_decode(sequences, skip_special_tokens=True)
+        captions_text = self.blip_processor.batch_decode(captions_output.sequences, skip_special_tokens=True)
         captions_text = np.array([cap[len(blip_prompt):].strip() for cap in captions_text]).reshape(bsz, -1)
         samples["intensive_captions"] = captions_text
-        import pdb; pdb.set_trace()
-        captions_logits = self.blip_model.generate(
-            pixel_values=pixel_values,
+        attention_mask = torch.logical_and(
+            sequences != self.blip_processor.tokenizer.pad_token_id,
+            sequences != self.blip_processor.tokenizer.sep_token_id
+        ).int()
+        logits = self.blip_model(
+            pixel_values=pixel_values.repeat_interleave(num_captions, dim=0), 
             input_ids=sequences,
-            return_dict=True
-        )
-        samples["top_scores_intensive_captions"] = captions_logits
+            attention_mask=attention_mask
+        ).logits
+        logprobs = logits.log_softmax(dim=-1).max(dim=-1).values
+        #logprobs[attention_mask == 0] = 0
+        #z = (attention_mask != 0 ).sum(dim=-1)
+        captions_scores = (logprobs.sum(dim=-1)).reshape((bsz, num_captions)) 
+        #labels = sequences.masked_fill(attention_mask == 0, -100).to(self.device)
+        #loss = F.cross_entropy(
+        #    logits.reshape(-1, logits.shape[-1]),
+        #    labels.view(-1),
+        #    ignore_index=-100,
+        #    reduction='none'
+        #).reshape((bsz, num_captions, -1))
+        #z = (labels.reshape((bsz, num_captions, -1)) > -1).sum(dim=-1)
+        #blip_perplexity = -loss.sum(dim=-1) / z
+        samples["top_scores_intensive_captions"] = captions_scores
         return samples
 
     # This function could be more efficient
